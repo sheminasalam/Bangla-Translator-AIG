@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">Bangla WhatsApp Translator</string>
+    <string name="accessibility_service_label">Bangla WhatsApp Translator Service</string>
+    <string name="accessibility_service_description">Reads visible Bengali messages inside WhatsApp and WhatsApp Business conversations to display instant on-device English translations as discreet overlays. Messages never leave your phone.</string>
+    
+    <!-- UI Strings -->
+    <string name="title_status">Service Status</string>
+    <string name="accessibility_status_enabled">Accessibility Service is Active</string>
+    <string name="accessibility_status_disabled">Accessibility Service is Disabled</string>
+    <string name="btn_enable_accessibility">Configure Accessibility</string>
+    
+    <string name="title_model">Translation Engine (On-Device ML Kit)</string>
+    <string name="model_status_ready">Bengali → English Model Ready</string>
+    <string name="model_status_needed">Model Download Required (~30MB)</string>
+    <string name="model_status_downloading">Downloading Translation Model…</string>
+    <string name="btn_download_model">Download Language Model</string>
+    
+    <string name="title_overlay_settings">In-App Chat Overlay</string>
+    <string name="desc_overlay_settings">Display translated English text directly beneath Bengali WhatsApp messages.</string>
+    
+    <string name="title_notification_settings">WhatsApp Notification Translation</string>
+    <string name="desc_notification_settings">Automatically detect and translate incoming Bengali WhatsApp notifications.</string>
+    <string name="btn_enable_notification_access">Enable Notification Access</string>
+    
+    <string name="title_privacy">Privacy &amp; Security Assurance</string>
+    <string name="privacy_body">All translations run 100% locally on your device via Google ML Kit. No message content is ever transmitted over the network or logged to remote servers.</string>
+</resources>

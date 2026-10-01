@@ -1,0 +1,18 @@
+<resources>
+    <color name="primary">#0F5132</color>
+    <color name="primary_dark">#0A3622</color>
+    <color name="accent">#198754</color>
+    <color name="whatsapp_green">#25D366</color>
+    <color name="background_light">#F8F9FA</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="text_primary">#212529</color>
+    <color name="text_secondary">#6C757D</color>
+    <color name="status_active">#198754</color>
+    <color name="status_inactive">#DC3545</color>
+    
+    <!-- Overlay Colors -->
+    <color name="overlay_background">#EBF5FB</color>
+    <color name="overlay_stroke">#AED6F1</color>
+    <color name="overlay_text">#1B4F72</color>
+    <color name="overlay_badge_bg">#2E86C1</color>
+</resources>

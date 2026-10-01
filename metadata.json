@@ -1,0 +1,6 @@
+{
+  "name": "Bangla WhatsApp Translator",
+  "description": "On-device Bengali to English WhatsApp message and notification translation system using Android AccessibilityService and ML Kit",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
