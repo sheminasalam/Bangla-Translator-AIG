@@ -111,15 +111,37 @@ class WhatsAppMessageScanner(
                                 val candidateText = extractCandidateText(node)
                                 if (candidateText != null && isLikelyBengaliMessage(candidateText, node)) {
                                     val normalized = candidateText.trim().replace(Regex("\\s+"), " ")
-                                    val isIncoming = tempBounds.left < screenBounds.width() / 2
-                                    val yBucket = tempBounds.top / 80
+
+                                    // Extract nearest message bubble container bounds for true bubble width & bottom edge
+                                    val bubbleBounds = Rect(tempBounds)
+                                    val parent = node.parent
+                                    try {
+                                        if (parent != null) {
+                                            val parentBounds = Rect()
+                                            parent.getBoundsInScreen(parentBounds)
+                                            // A valid message bubble container is at least as wide as the text,
+                                            // but narrower than 90% of screen width (not a list/recycler container)
+                                            if (parentBounds.width() >= tempBounds.width() &&
+                                                parentBounds.width() <= (screenBounds.width() * 0.90f).toInt() &&
+                                                parentBounds.height() >= tempBounds.height() &&
+                                                parentBounds.height() <= (screenBounds.height() * 0.70f).toInt()) {
+                                                bubbleBounds.set(parentBounds)
+                                            }
+                                        }
+                                    } catch (_: Exception) {
+                                    } finally {
+                                        parent?.recycle()
+                                    }
+
+                                    val isIncoming = bubbleBounds.left < screenBounds.width() * 0.35f
+                                    val yBucket = bubbleBounds.top / 80
                                     val displayKey = "msg_${sessionGeneration}_${normalized.hashCode()}_${if (isIncoming) "in" else "out"}_b$yBucket"
                                     
                                     // Spatial de-duplication: avoid adding duplicate items if overlapping with an existing scanned message
                                     val isDuplicate = results.any { existing ->
                                         existing.normalizedText == normalized &&
-                                                Math.abs(existing.bounds.top - tempBounds.top) < 40 &&
-                                                Math.abs(existing.bounds.left - tempBounds.left) < 60
+                                                Math.abs(existing.bounds.top - bubbleBounds.top) < 40 &&
+                                                Math.abs(existing.bounds.left - bubbleBounds.left) < 60
                                     }
 
                                     if (!isDuplicate) {
@@ -127,7 +149,7 @@ class WhatsAppMessageScanner(
                                             ScannedMessage(
                                                 originalText = candidateText,
                                                 normalizedText = normalized,
-                                                bounds = Rect(tempBounds),
+                                                bounds = Rect(bubbleBounds),
                                                 displayKey = displayKey
                                             )
                                         )

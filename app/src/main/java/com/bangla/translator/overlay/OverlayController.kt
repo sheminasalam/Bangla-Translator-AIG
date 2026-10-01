@@ -10,14 +10,16 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.bangla.translator.R
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Controller responsible for managing floating Accessibility overlays above/below
- * WhatsApp messages using TYPE_ACCESSIBILITY_OVERLAY.
- * All mutations execute strictly on the main looper thread.
+ * Controller responsible for rendering compact, message-attached translation insets
+ * directly beneath WhatsApp message bubbles using TYPE_ACCESSIBILITY_OVERLAY.
+ * Designed to look visually integrated into WhatsApp dark mode messages (IMAGE 2).
  */
 class OverlayController(
     private val context: Context,
@@ -26,11 +28,10 @@ class OverlayController(
 
     companion object {
         private const val TAG = "OverlayController"
-        private const val OVERLAY_MARGIN_DP = 4
-        private const val MIN_OVERLAY_WIDTH_DP = 140
-        private const val MAX_OVERLAY_WIDTH_DP = 280
+        private const val HORIZONTAL_MARGIN_DP = 6
         private const val STATUS_BAR_MARGIN_DP = 28
         private const val NAV_BAR_MARGIN_DP = 48
+        private const val ATTACHMENT_GAP_DP = 2
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -45,20 +46,16 @@ class OverlayController(
 
     // Map of displayKey -> ActiveOverlay (thread-safe reference map)
     private val activeOverlays = ConcurrentHashMap<String, ActiveOverlay>()
-    private val dismissedKeys = ConcurrentHashMap.newKeySet<String>()
-
-    private var areBubblesHidden = false
-    private var floatingToggleView: View? = null
 
     private val density = context.resources.displayMetrics.density
-    private val marginPx = (OVERLAY_MARGIN_DP * density).toInt()
-    private val minWidthPx = (110 * density).toInt()
-    private val maxWidthPx = (270 * density).toInt()
+    private val marginPx = (HORIZONTAL_MARGIN_DP * density).toInt()
+    private val gapPx = (ATTACHMENT_GAP_DP * density).toInt()
     private val statusBarInsetPx = (STATUS_BAR_MARGIN_DP * density).toInt()
     private val navBarInsetPx = (NAV_BAR_MARGIN_DP * density).toInt()
 
     /**
-     * Displays or updates a translation overlay on the main thread.
+     * Displays or updates a translation overlay on the main thread, visually attached
+     * directly beneath the target WhatsApp message bubble.
      */
     fun showOverlay(
         displayKey: String,
@@ -69,12 +66,6 @@ class OverlayController(
         inputBarTop: Int? = null
     ) {
         runOnMainThread {
-            // If user explicitly dismissed this bubble, don't re-show
-            if (displayKey in dismissedKeys) {
-                return@runOnMainThread
-            }
-
-            // If already present for this display key, update content & position
             val existing = activeOverlays[displayKey]
             if (existing != null) {
                 if (existing.sessionGeneration != sessionGeneration) {
@@ -85,46 +76,67 @@ class OverlayController(
                 }
             }
 
-            // Inflate new overlay view
+            // Inflate new sleek inset overlay view
             val inflater = LayoutInflater.from(context)
             val overlayView = inflater.inflate(R.layout.layout_translation_overlay, null)
+            val rootLayout = overlayView.findViewById<LinearLayout>(R.id.llOverlayRoot)
+            val tvLabel = overlayView.findViewById<TextView>(R.id.tvLanguageLabel)
             val tvTranslated = overlayView.findViewById<TextView>(R.id.tvTranslatedText)
+
             tvTranslated.text = translatedText
 
-            // Bind individual card hide button ✕
-            val btnHide = overlayView.findViewById<TextView>(R.id.btnHideOverlay)
-            btnHide?.setOnClickListener {
-                dismissedKeys.add(displayKey)
-                removeOverlay(displayKey)
+            val screenW = screenBounds.width()
+            val screenH = screenBounds.height()
+            val isOutgoing = targetBounds.left > screenW * 0.30f
+
+            // Apply contextual styling matching WhatsApp message bubble type (IMAGE 2)
+            if (isOutgoing) {
+                rootLayout.setBackgroundResource(R.drawable.bg_overlay_outgoing)
+                tvLabel.setTextColor(ContextCompat.getColor(context, R.color.overlay_outgoing_label))
+            } else {
+                rootLayout.setBackgroundResource(R.drawable.bg_overlay_incoming)
+                tvLabel.setTextColor(ContextCompat.getColor(context, R.color.overlay_incoming_label))
             }
 
-            // Apply master toggle visibility state
-            overlayView.visibility = if (areBubblesHidden) View.GONE else View.VISIBLE
+            // Translation width follows the message bubble width
+            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
+            val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
 
-            val screenW = screenBounds.width()
-            val maxAvailableCardWidth = screenW - (marginPx * 2)
-
-            // Calculate width constraint based on target message bubble
-            val desiredWidth = targetBounds.width().coerceIn(minWidthPx, maxAvailableCardWidth)
             overlayView.measure(
-                View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
 
-            val measuredWidth = overlayView.measuredWidth.coerceIn(minWidthPx, maxAvailableCardWidth)
-            val measuredHeight = overlayView.measuredHeight.coerceAtLeast((24 * density).toInt())
+            val measuredWidth = overlayView.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
+            val measuredHeight = overlayView.measuredHeight.coerceAtLeast((20 * density).toInt())
 
-            // Calculate smart collision-free positioning
-            val position = calculateIntelligentPosition(
-                displayKey = displayKey,
-                targetBounds = targetBounds,
-                overlayWidth = measuredWidth,
-                overlayHeight = measuredHeight,
-                screenBounds = screenBounds,
-                inputBarTop = inputBarTop
-            ) ?: return@runOnMainThread // If no room above keyboard/typing bar, skip to avoid covering input
+            // Align outgoing translations with right edge; incoming with left edge
+            var posX = if (isOutgoing) {
+                targetBounds.right - measuredWidth
+            } else {
+                targetBounds.left
+            }
 
-            val (posX, posY) = position
+            if (posX + measuredWidth > screenW - marginPx) {
+                posX = screenW - measuredWidth - marginPx
+            }
+            if (posX < marginPx) {
+                posX = marginPx
+            }
+
+            // Attached directly beneath the WhatsApp bubble with 2dp gap
+            val posY = targetBounds.bottom + gapPx
+
+            // Bottom boundary to ensure it never covers the composer or keyboard
+            val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
+                inputBarTop - (4 * density).toInt()
+            } else {
+                screenH - (navBarInsetPx + (56 * density).toInt())
+            }
+
+            if (targetBounds.top >= bottomLimit || posY + measuredHeight > bottomLimit) {
+                return@runOnMainThread
+            }
 
             val layoutParams = WindowManager.LayoutParams().apply {
                 type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -149,123 +161,10 @@ class OverlayController(
                     currentBounds = targetBounds,
                     overlayScreenRect = placedRect
                 )
-                ensureFloatingToggleAttached(screenBounds)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach translation overlay to WindowManager", e)
             }
         }
-    }
-
-    /**
-     * Determines optimal X/Y coordinates avoiding collision with other active overlays
-     * and strictly never covering the typing input bar or keyboard.
-     */
-    private fun calculateIntelligentPosition(
-        displayKey: String,
-        targetBounds: Rect,
-        overlayWidth: Int,
-        overlayHeight: Int,
-        screenBounds: Rect,
-        inputBarTop: Int? = null
-    ): Pair<Int, Int>? {
-        val screenW = screenBounds.width()
-        val screenH = screenBounds.height()
-
-        // 1. Calculate boundaries: top status bar and bottom typing bar / keyboard limit
-        val minY = statusBarInsetPx
-        val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
-            inputBarTop - (4 * density).toInt()
-        } else {
-            screenH - (navBarInsetPx + (56 * density).toInt())
-        }
-        val maxY = bottomLimit - overlayHeight
-
-        // If target message is completely scrolled beneath the keyboard/typing bar, do not display
-        if (targetBounds.top >= bottomLimit || maxY < minY) {
-            return null
-        }
-
-        // 2. Horizontal positioning:
-        // Outgoing message (green bubble on right side): align with right edge of message bubble!
-        // Incoming message (white/gray bubble on left side): align with left edge of message bubble!
-        val isOutgoing = targetBounds.left > screenW * 0.35f
-        var posX = if (isOutgoing) {
-            targetBounds.right - overlayWidth
-        } else {
-            targetBounds.left
-        }
-
-        // Strictly guarantee card fits inside screen boundaries:
-        if (posX + overlayWidth > screenW - marginPx) {
-            posX = screenW - overlayWidth - marginPx
-        }
-        if (posX < marginPx) {
-            posX = marginPx
-        }
-
-        val otherOverlays = activeOverlays.values.filter { it.displayKey != displayKey }
-
-        // Candidate 1: Below message bubble
-        val posYBelow = targetBounds.bottom + marginPx
-        val rectBelow = Rect(posX, posYBelow, posX + overlayWidth, posYBelow + overlayHeight)
-        val collidesBelow = otherOverlays.any { Rect.intersects(rectBelow, it.overlayScreenRect) }
-        val fitsBelow = !collidesBelow && (posYBelow + overlayHeight <= bottomLimit)
-
-        if (fitsBelow) {
-            return Pair(posX, posYBelow)
-        }
-
-        // Candidate 2: In-place directly over the Bengali text
-        val posYInPlace = targetBounds.top
-        val rectInPlace = Rect(posX, posYInPlace, posX + overlayWidth, posYInPlace + overlayHeight)
-        val collidesInPlace = otherOverlays.any { Rect.intersects(rectInPlace, it.overlayScreenRect) }
-        val fitsInPlace = !collidesInPlace && (posYInPlace >= minY) && (posYInPlace + overlayHeight <= bottomLimit)
-
-        if (fitsInPlace) {
-            return Pair(posX, posYInPlace)
-        }
-
-        // Candidate 3: Above message bubble
-        val posYAbove = targetBounds.top - overlayHeight - marginPx
-        val rectAbove = Rect(posX, posYAbove, posX + overlayWidth, posYAbove + overlayHeight)
-        val collidesAbove = otherOverlays.any { Rect.intersects(rectAbove, it.overlayScreenRect) }
-        val fitsAbove = !collidesAbove && (posYAbove >= minY)
-
-        if (fitsAbove) {
-            return Pair(posX, posYAbove)
-        }
-
-        // Candidate 4: Stacking cleanly right below the colliding overlay (zero overlap!)
-        val collidingOverlay = otherOverlays.firstOrNull { Rect.intersects(rectBelow, it.overlayScreenRect) }
-        if (collidingOverlay != null) {
-            val yStacked = collidingOverlay.overlayScreenRect.bottom + marginPx
-            val rectStacked = Rect(posX, yStacked, posX + overlayWidth, yStacked + overlayHeight)
-            val collidesStacked = otherOverlays.any { Rect.intersects(rectStacked, it.overlayScreenRect) }
-            if (!collidesStacked && (yStacked + overlayHeight <= bottomLimit)) {
-                return Pair(posX, yStacked)
-            }
-        }
-
-        // Candidate 5: Adjacent horizontal placement (for incoming messages on left, place on right wallpaper)
-        val isLeftBubble = targetBounds.left < screenW / 2
-        val altPosX = if (isLeftBubble) {
-            screenW - overlayWidth - marginPx
-        } else {
-            marginPx
-        }
-        val rectAlt = Rect(altPosX, targetBounds.top, altPosX + overlayWidth, targetBounds.top + overlayHeight)
-        val collidesAlt = otherOverlays.any { Rect.intersects(rectAlt, it.overlayScreenRect) }
-        if (!collidesAlt && (targetBounds.top + overlayHeight <= bottomLimit)) {
-            return Pair(altPosX, targetBounds.top)
-        }
-
-        // Guaranteed collision prevention: if all candidates collide, return the best non-overlapping position
-        val bestY = if (posYBelow + overlayHeight <= bottomLimit) {
-            posYBelow
-        } else {
-            posYInPlace.coerceIn(minY, maxY)
-        }
-        return Pair(posX, bestY)
     }
 
     private fun updateOverlayView(
@@ -281,28 +180,65 @@ class OverlayController(
         }
 
         val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
-        val position = calculateIntelligentPosition(
-            displayKey = active.displayKey,
-            targetBounds = targetBounds,
-            overlayWidth = active.view.width.coerceAtLeast(minWidthPx),
-            overlayHeight = active.view.height.coerceAtLeast((24 * density).toInt()),
-            screenBounds = screenBounds,
-            inputBarTop = inputBarTop
+        val screenW = screenBounds.width()
+        val screenH = screenBounds.height()
+        val isOutgoing = targetBounds.left > screenW * 0.30f
+
+        val rootLayout = active.view.findViewById<LinearLayout>(R.id.llOverlayRoot)
+        val tvLabel = active.view.findViewById<TextView>(R.id.tvLanguageLabel)
+
+        if (isOutgoing) {
+            rootLayout?.setBackgroundResource(R.drawable.bg_overlay_outgoing)
+            tvLabel?.setTextColor(ContextCompat.getColor(context, R.color.overlay_outgoing_label))
+        } else {
+            rootLayout?.setBackgroundResource(R.drawable.bg_overlay_incoming)
+            tvLabel?.setTextColor(ContextCompat.getColor(context, R.color.overlay_incoming_label))
+        }
+
+        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
+        val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+
+        active.view.measure(
+            View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
 
-        // If no safe position exists (e.g. scrolled under keyboard), leave current position untouched!
-        if (position == null) {
+        val measuredWidth = active.view.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
+        val measuredHeight = active.view.measuredHeight.coerceAtLeast((20 * density).toInt())
+
+        var posX = if (isOutgoing) {
+            targetBounds.right - measuredWidth
+        } else {
+            targetBounds.left
+        }
+
+        if (posX + measuredWidth > screenW - marginPx) {
+            posX = screenW - measuredWidth - marginPx
+        }
+        if (posX < marginPx) {
+            posX = marginPx
+        }
+
+        val posY = targetBounds.bottom + gapPx
+
+        val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
+            inputBarTop - (4 * density).toInt()
+        } else {
+            screenH - (navBarInsetPx + (56 * density).toInt())
+        }
+
+        if (targetBounds.top >= bottomLimit || posY + measuredHeight > bottomLimit) {
             return
         }
 
-        val (posX, posY) = position
-        if (lp.x != posX || lp.y != posY) {
+        if (lp.x != posX || lp.y != posY || lp.width != measuredWidth) {
             lp.x = posX
             lp.y = posY
+            lp.width = measuredWidth
             try {
                 windowManager.updateViewLayout(active.view, lp)
                 active.currentBounds = targetBounds
-                active.overlayScreenRect = Rect(posX, posY, posX + active.view.width, posY + active.view.height)
+                active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + measuredHeight)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update overlay view position", e)
             }
@@ -340,15 +276,6 @@ class OverlayController(
                     iterator.remove()
                 }
             }
-
-            if (activeOverlays.isEmpty() && floatingToggleView != null) {
-                try {
-                    windowManager.removeView(floatingToggleView)
-                } catch (_: Exception) {}
-                floatingToggleView = null
-            } else {
-                updateFloatingToggleUI()
-            }
         }
     }
 
@@ -365,66 +292,6 @@ class OverlayController(
                 }
             }
             activeOverlays.clear()
-            dismissedKeys.clear()
-            areBubblesHidden = false
-
-            floatingToggleView?.let {
-                try {
-                    windowManager.removeView(it)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error removing floating toggle view", e)
-                }
-                floatingToggleView = null
-            }
-        }
-    }
-
-    private fun ensureFloatingToggleAttached(screenBounds: Rect) {
-        if (floatingToggleView != null) {
-            updateFloatingToggleUI()
-            return
-        }
-
-        val inflater = LayoutInflater.from(context)
-        val toggleView = inflater.inflate(R.layout.layout_floating_toggle, null)
-        val container = toggleView.findViewById<View>(R.id.pillToggleContainer)
-        container.setOnClickListener {
-            toggleAllOverlays()
-        }
-
-        val lp = WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-            format = PixelFormat.TRANSLUCENT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-            gravity = Gravity.TOP or Gravity.END
-            x = (12 * density).toInt()
-            y = (statusBarInsetPx + (10 * density).toInt())
-            width = WindowManager.LayoutParams.WRAP_CONTENT
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-        }
-
-        try {
-            windowManager.addView(toggleView, lp)
-            floatingToggleView = toggleView
-            updateFloatingToggleUI()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach floating toggle button", e)
-        }
-    }
-
-    private fun updateFloatingToggleUI() {
-        val tv = floatingToggleView?.findViewById<TextView>(R.id.tvToggleText) ?: return
-        val count = activeOverlays.size
-        tv.text = if (areBubblesHidden) "Show ($count)" else "Hide"
-    }
-
-    fun toggleAllOverlays() {
-        areBubblesHidden = !areBubblesHidden
-        updateFloatingToggleUI()
-        for ((_, overlay) in activeOverlays) {
-            overlay.view.visibility = if (areBubblesHidden) View.GONE else View.VISIBLE
         }
     }
 

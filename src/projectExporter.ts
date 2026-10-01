@@ -106,8 +106,8 @@ android {
         applicationId = "com.bangla.translator"
         minSdk = 24
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -267,15 +267,39 @@ dependencies {
     <color name="status_active">#198754</color>
     <color name="status_inactive">#DC3545</color>
     
-    <!-- Overlay Colors (Sleek Dark Theme matching WhatsApp) -->
-    <color name="overlay_background">#F2132431</color>
-    <color name="overlay_stroke">#2E86C1</color>
-    <color name="overlay_text">#F8FAFC</color>
-    <color name="overlay_badge_bg">#2E86C1</color>
-    <color name="overlay_badge_text">#FFFFFF</color>
-    <color name="overlay_subtext">#7FB3D5</color>
-    <color name="overlay_dot">#25D366</color>
+    <!-- Polished WhatsApp Inset Overlay Colors (IMAGE 2) -->
+    <color name="overlay_incoming_bg">#1F2C34</color>
+    <color name="overlay_incoming_stroke">#2A3942</color>
+    <color name="overlay_incoming_label">#8696A0</color>
+
+    <color name="overlay_outgoing_bg">#0B2B20</color>
+    <color name="overlay_outgoing_stroke">#144635</color>
+    <color name="overlay_outgoing_label">#25D366</color>
+
+    <color name="overlay_text">#E9EDEF</color>
 </resources>
+`,
+
+  'app/src/main/res/drawable/bg_overlay_incoming.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/overlay_incoming_bg" />
+    <stroke
+        android:width="0.8dp"
+        android:color="@color/overlay_incoming_stroke" />
+    <corners android:radius="11dp" />
+</shape>
+`,
+
+  'app/src/main/res/drawable/bg_overlay_outgoing.xml': `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/overlay_outgoing_bg" />
+    <stroke
+        android:width="0.8dp"
+        android:color="@color/overlay_outgoing_stroke" />
+    <corners android:radius="11dp" />
+</shape>
 `,
 
   'app/src/main/res/values/themes.xml': `<resources>
@@ -300,118 +324,41 @@ dependencies {
 </ScrollView>
 `,
 
-  'app/src/main/res/layout/layout_floating_toggle.xml': `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/pillToggleContainer"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_overlay_card"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:elevation="8dp"
-    android:paddingStart="8dp"
-    android:paddingTop="4dp"
-    android:paddingEnd="10dp"
-    android:paddingBottom="4dp">
-
-    <ImageView
-        android:id="@+id/ivToggleIcon"
-        android:layout_width="12dp"
-        android:layout_height="12dp"
-        android:src="@drawable/ic_translate"
-        android:contentDescription="@null"
-        app:tint="@color/overlay_subtext" />
-
-    <TextView
-        android:id="@+id/tvToggleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="5dp"
-        android:text="Hide"
-        android:textStyle="bold"
-        android:textColor="@color/overlay_text"
-        android:textSize="11sp" />
-</LinearLayout>
-`,
-
   'app/src/main/res/layout/layout_translation_overlay.xml': `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/llOverlayRoot"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_overlay_card"
+    android:background="@drawable/bg_overlay_incoming"
     android:orientation="vertical"
-    android:elevation="6dp"
-    android:paddingStart="9dp"
+    android:paddingStart="10dp"
     android:paddingTop="5dp"
-    android:paddingEnd="9dp"
+    android:paddingEnd="10dp"
     android:paddingBottom="6dp">
 
-    <!-- Header bar: indicator dot + icon + BN -> EN badge + ✕ Hide button -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:layout_marginBottom="2dp">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:background="@drawable/bg_overlay_card"
-                android:backgroundTint="@color/overlay_dot" />
-
-            <ImageView
-                android:layout_width="11dp"
-                android:layout_height="11dp"
-                android:layout_marginStart="4dp"
-                android:src="@drawable/ic_translate"
-                android:contentDescription="@null"
-                app:tint="@color/overlay_subtext" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="BENGALI → ENGLISH"
-                android:textStyle="bold"
-                android:textColor="@color/overlay_subtext"
-                android:textSize="8sp"
-                android:letterSpacing="0.05" />
-        </LinearLayout>
-
-        <!-- Discreet Hide Button for this bubble -->
-        <TextView
-            android:id="@+id/btnHideOverlay"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:paddingEnd="2dp"
-            android:text="✕"
-            android:textSize="10sp"
-            android:textColor="@color/overlay_subtext"
-            android:textStyle="bold"
-            android:contentDescription="Hide this translation" />
-    </LinearLayout>
-
-    <!-- Translated English text -->
+    <!-- Subtle Language Inset Label (বাংলা → English) -->
     <TextView
-        android:id="@+id/tvTranslatedText"
+        android:id="@+id/tvLanguageLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="বাংলা → English"
+        android:textSize="10.5sp"
+        android:textColor="@color/overlay_incoming_label"
+        android:includeFontPadding="false"
+        android:letterSpacing="0.02" />
+
+    <!-- Clean Translated English Text -->
+    <TextView
+        android:id="@+id/tvTranslatedText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2.5dp"
         android:textColor="@color/overlay_text"
-        android:textSize="12sp"
+        android:textSize="13.5sp"
         android:textStyle="normal"
-        android:lineSpacingExtra="2dp"
-        android:maxLines="6"
+        android:lineSpacingExtra="1.5dp"
+        android:includeFontPadding="false"
+        android:maxLines="8"
         android:ellipsize="end"
         android:textIsSelectable="false" />
 </LinearLayout>
@@ -642,66 +589,139 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
-import android.view.*
+import android.util.Log
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.bangla.translator.R
 import java.util.concurrent.ConcurrentHashMap
 
 class OverlayController(private val context: Context, private val windowManager: WindowManager) {
-    data class ActiveOverlay(val view: View, val displayKey: String, var overlayScreenRect: Rect)
+    data class ActiveOverlay(val view: View, val displayKey: String, val sessionGeneration: Long, var currentBounds: Rect, var overlayScreenRect: Rect = Rect())
     private val activeOverlays = ConcurrentHashMap<String, ActiveOverlay>()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val density = context.resources.displayMetrics.density
+    private val marginPx = (6 * density).toInt()
+    private val gapPx = (2 * density).toInt()
 
-    fun showOverlay(displayKey: String, translatedText: String, targetBounds: Rect, sessionGeneration: Long, screenBounds: Rect) {
+    fun showOverlay(displayKey: String, translatedText: String, targetBounds: Rect, sessionGeneration: Long, screenBounds: Rect, inputBarTop: Int? = null) {
         mainHandler.post {
-            removeOverlay(displayKey)
-            val inflater = LayoutInflater.from(context)
-            val view = inflater.inflate(R.layout.layout_translation_overlay, null)
-            view.findViewById<TextView>(R.id.tvTranslatedText).text = translatedText
+            val existing = activeOverlays[displayKey]
+            if (existing != null) {
+                if (existing.sessionGeneration != sessionGeneration) {
+                    removeOverlay(displayKey)
+                } else {
+                    updateOverlayView(existing, translatedText, targetBounds, screenBounds, inputBarTop)
+                    return@post
+                }
+            }
 
-            val density = context.resources.displayMetrics.density
-            val minWidth = (110 * density).toInt()
-            val maxWidth = (270 * density).toInt()
-            val desiredWidth = targetBounds.width().coerceIn(minWidth, maxWidth)
-            view.measure(
-                View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.AT_MOST),
+            val inflater = LayoutInflater.from(context)
+            val overlayView = inflater.inflate(R.layout.layout_translation_overlay, null)
+            val rootLayout = overlayView.findViewById<LinearLayout>(R.id.llOverlayRoot)
+            val tvLabel = overlayView.findViewById<TextView>(R.id.tvLanguageLabel)
+            val tvTranslated = overlayView.findViewById<TextView>(R.id.tvTranslatedText)
+            tvTranslated.text = translatedText
+
+            val screenW = screenBounds.width()
+            val screenH = screenBounds.height()
+            val isOutgoing = targetBounds.left > screenW * 0.30f
+
+            if (isOutgoing) {
+                rootLayout.setBackgroundResource(R.drawable.bg_overlay_outgoing)
+                tvLabel.setTextColor(ContextCompat.getColor(context, R.color.overlay_outgoing_label))
+            } else {
+                rootLayout.setBackgroundResource(R.drawable.bg_overlay_incoming)
+                tvLabel.setTextColor(ContextCompat.getColor(context, R.color.overlay_incoming_label))
+            }
+
+            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
+            val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+
+            overlayView.measure(
+                View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
-            val width = view.measuredWidth.coerceIn(minWidth, maxWidth)
-            val height = view.measuredHeight.coerceAtLeast((24 * density).toInt())
 
-            val posX = targetBounds.left.coerceIn((6 * density).toInt(), screenBounds.width() - width - (6 * density).toInt())
-            val posYBelow = targetBounds.bottom + (4 * density).toInt()
-            val rectBelow = Rect(posX, posYBelow, posX + width, posYBelow + height)
+            val measuredWidth = overlayView.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
+            val measuredHeight = overlayView.measuredHeight.coerceAtLeast((20 * density).toInt())
 
-            val collides = activeOverlays.values.any { Rect.intersects(rectBelow, it.overlayScreenRect) }
-            val posY = if (!collides && posYBelow + height <= screenBounds.height() - (48 * density).toInt()) {
-                posYBelow
-            } else {
-                targetBounds.top.coerceAtLeast((28 * density).toInt())
-            }
+            var posX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
+            if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
+            if (posX < marginPx) posX = marginPx
+
+            val posY = targetBounds.bottom + gapPx
+            val bottomLimit = if (inputBarTop != null && inputBarTop > (28 * density).toInt()) inputBarTop - (4 * density).toInt() else screenH - (104 * density).toInt()
+            if (targetBounds.top >= bottomLimit || posY + measuredHeight > bottomLimit) return@post
 
             val lp = WindowManager.LayoutParams().apply {
                 type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
                 format = PixelFormat.TRANSLUCENT
-                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 gravity = Gravity.TOP or Gravity.START
                 x = posX
                 y = posY
-                this.width = WindowManager.LayoutParams.WRAP_CONTENT
-                this.height = WindowManager.LayoutParams.WRAP_CONTENT
+                width = measuredWidth
+                height = WindowManager.LayoutParams.WRAP_CONTENT
             }
+
             try {
-                windowManager.addView(view, lp)
-                activeOverlays[displayKey] = ActiveOverlay(view, displayKey, Rect(posX, posY, posX + width, posY + height))
+                windowManager.addView(overlayView, lp)
+                activeOverlays[displayKey] = ActiveOverlay(overlayView, displayKey, sessionGeneration, targetBounds, Rect(posX, posY, posX + measuredWidth, posY + measuredHeight))
             } catch (_: Exception) {}
         }
+    }
+
+    private fun updateOverlayView(active: ActiveOverlay, translatedText: String, targetBounds: Rect, screenBounds: Rect, inputBarTop: Int?) {
+        val tv = active.view.findViewById<TextView>(R.id.tvTranslatedText)
+        if (tv.text != translatedText) tv.text = translatedText
+        val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
+        val screenW = screenBounds.width()
+        val isOutgoing = targetBounds.left > screenW * 0.30f
+
+        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
+        val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+
+        active.view.measure(
+            View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val measuredWidth = active.view.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
+        var posX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
+        if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
+        if (posX < marginPx) posX = marginPx
+
+        val posY = targetBounds.bottom + gapPx
+        lp.x = posX
+        lp.y = posY
+        lp.width = measuredWidth
+        try {
+            windowManager.updateViewLayout(active.view, lp)
+            active.currentBounds = targetBounds
+        } catch (_: Exception) {}
     }
 
     fun removeOverlay(displayKey: String) {
         mainHandler.post {
             activeOverlays.remove(displayKey)?.let {
                 try { windowManager.removeView(it.view) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun reconcileVisibleOverlays(currentlyVisibleKeys: Set<String>) {
+        mainHandler.post {
+            val iterator = activeOverlays.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.key !in currentlyVisibleKeys) {
+                    try { windowManager.removeView(entry.value.view) } catch (_: Exception) {}
+                    iterator.remove()
+                }
             }
         }
     }
@@ -714,6 +734,8 @@ class OverlayController(private val context: Context, private val windowManager:
             activeOverlays.clear()
         }
     }
+
+    val activeCount: Int get() = activeOverlays.size
 }
 `,
 
