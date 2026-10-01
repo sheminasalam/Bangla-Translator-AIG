@@ -267,10 +267,15 @@ dependencies {
     <color name="text_secondary">#6C757D</color>
     <color name="status_active">#198754</color>
     <color name="status_inactive">#DC3545</color>
-    <color name="overlay_background">#EBF5FB</color>
-    <color name="overlay_stroke">#AED6F1</color>
-    <color name="overlay_text">#1B4F72</color>
+    
+    <!-- Overlay Colors (Sleek Dark Theme matching WhatsApp) -->
+    <color name="overlay_background">#F2132431</color>
+    <color name="overlay_stroke">#2E86C1</color>
+    <color name="overlay_text">#F8FAFC</color>
     <color name="overlay_badge_bg">#2E86C1</color>
+    <color name="overlay_badge_text">#FFFFFF</color>
+    <color name="overlay_subtext">#7FB3D5</color>
+    <color name="overlay_dot">#25D366</color>
 </resources>
 `,
 
@@ -298,45 +303,58 @@ dependencies {
 
   'app/src/main/res/layout/layout_translation_overlay.xml': `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_overlay_card"
     android:orientation="vertical"
-    android:elevation="4dp"
-    android:paddingStart="8dp"
-    android:paddingTop="4dp"
-    android:paddingEnd="8dp"
-    android:paddingBottom="4dp">
+    android:elevation="6dp"
+    android:paddingStart="9dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="9dp"
+    android:paddingBottom="6dp">
 
+    <!-- Header bar: indicator dot + icon + BN -> EN badge -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:layout_marginBottom="2dp">
+
+        <View
+            android:layout_width="5dp"
+            android:layout_height="5dp"
+            android:background="@drawable/bg_overlay_card"
+            android:backgroundTint="@color/overlay_dot" />
 
         <ImageView
-            android:layout_width="12dp"
-            android:layout_height="12dp"
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginStart="4dp"
             android:src="@drawable/ic_translate"
-            android:contentDescription="@null" />
+            android:contentDescription="@null"
+            app:tint="@color/overlay_subtext" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
-            android:text="EN"
+            android:text="BENGALI → ENGLISH"
             android:textStyle="bold"
-            android:textColor="@color/overlay_badge_bg"
-            android:textSize="9sp" />
+            android:textColor="@color/overlay_subtext"
+            android:textSize="8sp"
+            android:letterSpacing="0.05" />
     </LinearLayout>
 
+    <!-- Translated English text -->
     <TextView
         android:id="@+id/tvTranslatedText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
         android:textColor="@color/overlay_text"
         android:textSize="12sp"
+        android:textStyle="normal"
         android:lineSpacingExtra="2dp"
         android:maxLines="6"
         android:ellipsize="end"
@@ -507,14 +525,27 @@ class WhatsAppMessageScanner(private val bengaliRatioThreshold: Float = 0.20f) {
             while (!queue.isEmpty() && results.size < 50) {
                 val node = queue.poll() ?: continue
                 try {
-                    if (node.isVisibleToUser) {
+                    val isLeafOrText = node.childCount == 0 ||
+                            node.className?.toString()?.contains("TextView") == true ||
+                            node.className?.toString()?.contains("TextEmojiLabel") == true
+
+                    if (node.isVisibleToUser && isLeafOrText) {
                         node.getBoundsInScreen(tempBounds)
-                        if (tempBounds.width() > 10 && tempBounds.height() > 10) {
-                            val text = node.text?.toString()
-                            if (!text.isNullOrBlank() && !node.isEditable && BengaliDetector.isBengali(text, bengaliRatioThreshold)) {
-                                val norm = text.trim().replace(Regex("\\\\s+"), " ")
-                                val key = "gen_\${sessionGeneration}_\${norm.hashCode()}_\${tempBounds.left}_\${tempBounds.top}"
-                                results.add(ScannedMessage(text, norm, Rect(tempBounds), key))
+                        if (tempBounds.width() > 15 && tempBounds.height() > 15) {
+                            if (!isInsideQuotedMessage(node)) {
+                                val text = node.text?.toString()
+                                if (!text.isNullOrBlank() && !node.isEditable && BengaliDetector.isBengali(text, bengaliRatioThreshold)) {
+                                    val norm = text.trim().replace(Regex("\\\\s+"), " ")
+                                    val isDup = results.any {
+                                        it.normalizedText == norm &&
+                                        Math.abs(it.bounds.top - tempBounds.top) < 40 &&
+                                        Math.abs(it.bounds.left - tempBounds.left) < 60
+                                    }
+                                    if (!isDup) {
+                                        val key = "gen_\${sessionGeneration}_\${norm.hashCode()}_\${tempBounds.left}_\${tempBounds.top}"
+                                        results.add(ScannedMessage(text, norm, Rect(tempBounds), key))
+                                    }
+                                }
                             }
                         }
                     }
@@ -529,6 +560,22 @@ class WhatsAppMessageScanner(private val bengaliRatioThreshold: Float = 0.20f) {
             while (!queue.isEmpty()) queue.poll()?.recycle()
         }
         return results
+    }
+
+    private fun isInsideQuotedMessage(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        try {
+            for (d in 0..3) {
+                val id = current?.viewIdResourceName?.lowercase() ?: ""
+                if (id.contains("quoted") || id.contains("quote") || id.contains("reply")) return true
+                val parent = current?.parent ?: break
+                if (current != node) current?.recycle()
+                current = parent
+            }
+        } finally {
+            if (current != null && current != node) current.recycle()
+        }
+        return false
     }
 }
 `,
@@ -546,7 +593,8 @@ import com.bangla.translator.R
 import java.util.concurrent.ConcurrentHashMap
 
 class OverlayController(private val context: Context, private val windowManager: WindowManager) {
-    private val activeOverlays = ConcurrentHashMap<String, View>()
+    data class ActiveOverlay(val view: View, val displayKey: String, var overlayScreenRect: Rect)
+    private val activeOverlays = ConcurrentHashMap<String, ActiveOverlay>()
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun showOverlay(displayKey: String, translatedText: String, targetBounds: Rect, sessionGeneration: Long, screenBounds: Rect) {
@@ -556,19 +604,41 @@ class OverlayController(private val context: Context, private val windowManager:
             val view = inflater.inflate(R.layout.layout_translation_overlay, null)
             view.findViewById<TextView>(R.id.tvTranslatedText).text = translatedText
 
+            val density = context.resources.displayMetrics.density
+            val minWidth = (110 * density).toInt()
+            val maxWidth = (270 * density).toInt()
+            val desiredWidth = targetBounds.width().coerceIn(minWidth, maxWidth)
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            val width = view.measuredWidth.coerceIn(minWidth, maxWidth)
+            val height = view.measuredHeight.coerceAtLeast((24 * density).toInt())
+
+            val posX = targetBounds.left.coerceIn((6 * density).toInt(), screenBounds.width() - width - (6 * density).toInt())
+            val posYBelow = targetBounds.bottom + (4 * density).toInt()
+            val rectBelow = Rect(posX, posYBelow, posX + width, posYBelow + height)
+
+            val collides = activeOverlays.values.any { Rect.intersects(rectBelow, it.overlayScreenRect) }
+            val posY = if (!collides && posYBelow + height <= screenBounds.height() - (48 * density).toInt()) {
+                posYBelow
+            } else {
+                targetBounds.top.coerceAtLeast((28 * density).toInt())
+            }
+
             val lp = WindowManager.LayoutParams().apply {
                 type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
                 format = PixelFormat.TRANSLUCENT
                 flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 gravity = Gravity.TOP or Gravity.START
-                x = targetBounds.left.coerceIn(10, screenBounds.width() - 250)
-                y = (targetBounds.bottom + 8).coerceIn(40, screenBounds.height() - 100)
-                width = WindowManager.LayoutParams.WRAP_CONTENT
-                height = WindowManager.LayoutParams.WRAP_CONTENT
+                x = posX
+                y = posY
+                this.width = WindowManager.LayoutParams.WRAP_CONTENT
+                this.height = WindowManager.LayoutParams.WRAP_CONTENT
             }
             try {
                 windowManager.addView(view, lp)
-                activeOverlays[displayKey] = view
+                activeOverlays[displayKey] = ActiveOverlay(view, displayKey, Rect(posX, posY, posX + width, posY + height))
             } catch (_: Exception) {}
         }
     }
@@ -576,15 +646,15 @@ class OverlayController(private val context: Context, private val windowManager:
     fun removeOverlay(displayKey: String) {
         mainHandler.post {
             activeOverlays.remove(displayKey)?.let {
-                try { windowManager.removeView(it) } catch (_: Exception) {}
+                try { windowManager.removeView(it.view) } catch (_: Exception) {}
             }
         }
     }
 
     fun removeAllOverlays() {
         mainHandler.post {
-            for ((_, view) in activeOverlays) {
-                try { windowManager.removeView(view) } catch (_: Exception) {}
+            for ((_, item) in activeOverlays) {
+                try { windowManager.removeView(item.view) } catch (_: Exception) {}
             }
             activeOverlays.clear()
         }

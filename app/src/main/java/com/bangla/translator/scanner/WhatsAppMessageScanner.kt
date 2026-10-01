@@ -80,24 +80,43 @@ class WhatsAppMessageScanner(
                         val isHorizontallyVisible = tempBounds.right > screenBounds.left && tempBounds.left < screenBounds.right
                         val isVerticallyVisible = tempBounds.bottom > screenBounds.top && tempBounds.top < screenBounds.bottom
 
-                        if (isHorizontallyVisible && isVerticallyVisible && tempBounds.width() > 10 && tempBounds.height() > 10) {
-                            val candidateText = extractCandidateText(node)
-                            if (candidateText != null && isLikelyBengaliMessage(candidateText, node)) {
-                                val normalized = candidateText.trim().replace(Regex("\\s+"), " ")
-                                val displayKey = "gen_${sessionGeneration}_${normalized.hashCode()}_${tempBounds.left}_${tempBounds.top}"
-                                results.add(
-                                    ScannedMessage(
-                                        originalText = candidateText,
-                                        normalizedText = normalized,
-                                        bounds = Rect(tempBounds),
-                                        displayKey = displayKey
-                                    )
-                                )
+                        // ONLY extract from LEAF text nodes (childCount == 0) or TextViews to prevent
+                        // parent ViewGroup containers from creating duplicate overlapping overlays!
+                        val isLeafOrText = node.childCount == 0 ||
+                                node.className?.toString()?.contains("TextView") == true ||
+                                node.className?.toString()?.contains("TextEmojiLabel") == true
+
+                        if (isHorizontallyVisible && isVerticallyVisible && isLeafOrText && tempBounds.width() > 15 && tempBounds.height() > 15) {
+                            // Check if this node is inside a quoted/reply preview container
+                            if (!isInsideQuotedMessage(node)) {
+                                val candidateText = extractCandidateText(node)
+                                if (candidateText != null && isLikelyBengaliMessage(candidateText, node)) {
+                                    val normalized = candidateText.trim().replace(Regex("\\s+"), " ")
+                                    val displayKey = "gen_${sessionGeneration}_${normalized.hashCode()}_${tempBounds.left}_${tempBounds.top}"
+                                    
+                                    // Spatial de-duplication: avoid adding duplicate items if overlapping with an existing scanned message
+                                    val isDuplicate = results.any { existing ->
+                                        existing.normalizedText == normalized &&
+                                                Math.abs(existing.bounds.top - tempBounds.top) < 40 &&
+                                                Math.abs(existing.bounds.left - tempBounds.left) < 60
+                                    }
+
+                                    if (!isDuplicate) {
+                                        results.add(
+                                            ScannedMessage(
+                                                originalText = candidateText,
+                                                normalizedText = normalized,
+                                                bounds = Rect(tempBounds),
+                                                displayKey = displayKey
+                                            )
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
 
-                    // Enqueue children if not leaf node
+                    // Enqueue children
                     val childCount = node.childCount
                     for (i in 0 until childCount) {
                         val child = node.getChild(i)
@@ -120,15 +139,53 @@ class WhatsAppMessageScanner(
     }
 
     /**
-     * Extracts text from node, prioritizing node.text over contentDescription.
+     * Inspects the node and its immediate ancestors to verify if it belongs
+     * to a quoted message / reply preview header, which should not be translated.
+     */
+    private fun isInsideQuotedMessage(node: AccessibilityNodeInfo): Boolean {
+        // 1. Direct view ID check on the node
+        val directId = node.viewIdResourceName?.lowercase() ?: ""
+        if (directId.contains("quoted") || directId.contains("quote") || directId.contains("reply")) {
+            return true
+        }
+
+        // 2. Ancestor view ID check (up to 4 levels)
+        var current: AccessibilityNodeInfo? = node
+        try {
+            for (depth in 0..3) {
+                val parent = current?.parent ?: break
+                val parentId = parent.viewIdResourceName?.lowercase() ?: ""
+                if (parentId.contains("quoted") || parentId.contains("quote") || parentId.contains("reply_container")) {
+                    parent.recycle()
+                    return true
+                }
+                if (current != node) {
+                    current?.recycle()
+                }
+                current = parent
+            }
+        } finally {
+            if (current != null && current != node) {
+                current.recycle()
+            }
+        }
+        return false
+    }
+
+    /**
+     * Extracts text from node. Strictly prioritizes node.text for message contents
+     * to avoid extracting full container descriptions from parent layouts.
      */
     private fun extractCandidateText(node: AccessibilityNodeInfo): String? {
         val text = node.text?.toString()
         if (!text.isNullOrBlank()) return text
 
-        val desc = node.contentDescription?.toString()
-        if (!desc.isNullOrBlank() && !desc.startsWith("Voice message") && !desc.startsWith("Photo")) {
-            return desc
+        // Only fallback to contentDescription if leaf node
+        if (node.childCount == 0) {
+            val desc = node.contentDescription?.toString()
+            if (!desc.isNullOrBlank() && !desc.startsWith("Voice message") && !desc.startsWith("Photo")) {
+                return desc
+            }
         }
         return null
     }

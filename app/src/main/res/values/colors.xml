@@ -10,9 +10,12 @@
     <color name="status_active">#198754</color>
     <color name="status_inactive">#DC3545</color>
     
-    <!-- Overlay Colors -->
-    <color name="overlay_background">#EBF5FB</color>
-    <color name="overlay_stroke">#AED6F1</color>
-    <color name="overlay_text">#1B4F72</color>
+    <!-- Overlay Colors (Sleek Dark Theme matching WhatsApp) -->
+    <color name="overlay_background">#F2132431</color>
+    <color name="overlay_stroke">#2E86C1</color>
+    <color name="overlay_text">#F8FAFC</color>
     <color name="overlay_badge_bg">#2E86C1</color>
+    <color name="overlay_badge_text">#FFFFFF</color>
+    <color name="overlay_subtext">#7FB3D5</color>
+    <color name="overlay_dot">#25D366</color>
 </resources>

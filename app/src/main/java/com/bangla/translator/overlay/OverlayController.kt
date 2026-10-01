@@ -39,7 +39,8 @@ class OverlayController(
         val view: View,
         val displayKey: String,
         val sessionGeneration: Long,
-        var currentBounds: Rect
+        var currentBounds: Rect,
+        var overlayScreenRect: Rect = Rect()
     )
 
     // Map of displayKey -> ActiveOverlay (thread-safe reference map)
@@ -47,8 +48,8 @@ class OverlayController(
 
     private val density = context.resources.displayMetrics.density
     private val marginPx = (OVERLAY_MARGIN_DP * density).toInt()
-    private val minWidthPx = (MIN_OVERLAY_WIDTH_DP * density).toInt()
-    private val maxWidthPx = (MAX_OVERLAY_WIDTH_DP * density).toInt()
+    private val minWidthPx = (110 * density).toInt()
+    private val maxWidthPx = (270 * density).toInt()
     private val statusBarInsetPx = (STATUS_BAR_MARGIN_DP * density).toInt()
     private val navBarInsetPx = (NAV_BAR_MARGIN_DP * density).toInt()
 
@@ -87,11 +88,12 @@ class OverlayController(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
 
-            val measuredWidth = overlayView.measuredWidth.coerceAtLeast(minWidthPx)
-            val measuredHeight = overlayView.measuredHeight.coerceAtLeast((28 * density).toInt())
+            val measuredWidth = overlayView.measuredWidth.coerceIn(minWidthPx, maxWidthPx)
+            val measuredHeight = overlayView.measuredHeight.coerceAtLeast((24 * density).toInt())
 
-            // Calculate smart positioning with boundary clamping
+            // Calculate smart collision-free positioning
             val (posX, posY) = calculateIntelligentPosition(
+                displayKey = displayKey,
                 targetBounds = targetBounds,
                 overlayWidth = measuredWidth,
                 overlayHeight = measuredHeight,
@@ -114,11 +116,13 @@ class OverlayController(
 
             try {
                 windowManager.addView(overlayView, layoutParams)
+                val placedRect = Rect(posX, posY, posX + measuredWidth, posY + measuredHeight)
                 activeOverlays[displayKey] = ActiveOverlay(
                     view = overlayView,
                     displayKey = displayKey,
                     sessionGeneration = sessionGeneration,
-                    currentBounds = targetBounds
+                    currentBounds = targetBounds,
+                    overlayScreenRect = placedRect
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach translation overlay to WindowManager", e)
@@ -127,12 +131,15 @@ class OverlayController(
     }
 
     /**
-     * Determines optimal X/Y coordinates:
-     * 1. Try below message bubble.
-     * 2. If insufficient vertical room, place above message bubble.
-     * 3. Clamp X and Y strictly within visible screen boundaries.
+     * Determines optimal X/Y coordinates avoiding collision with other active overlays:
+     * 1. Try below message bubble if space available and no collision.
+     * 2. If below collides or exceeds screen, try above message bubble.
+     * 3. If neither fits without collision (common when messages are tightly stacked),
+     *    place in-place directly covering original Bengali text cleanly.
+     * 4. Clamp X and Y strictly within visible screen boundaries.
      */
     private fun calculateIntelligentPosition(
+        displayKey: String,
         targetBounds: Rect,
         overlayWidth: Int,
         overlayHeight: Int,
@@ -150,30 +157,43 @@ class OverlayController(
             posX = marginPx
         }
 
-        // 2. Vertical positioning: try below bubble first
-        val spaceBelow = screenH - navBarInsetPx - targetBounds.bottom
-        val spaceAbove = targetBounds.top - statusBarInsetPx
+        val minY = statusBarInsetPx
+        val maxY = screenH - navBarInsetPx - overlayHeight
 
-        var posY: Int
-        if (spaceBelow >= overlayHeight + marginPx) {
-            posY = targetBounds.bottom + marginPx
-        } else if (spaceAbove >= overlayHeight + marginPx) {
-            posY = targetBounds.top - overlayHeight - marginPx
-        } else {
-            // If neither fits cleanly, pick side with more space and clamp
-            posY = if (spaceBelow > spaceAbove) {
-                targetBounds.bottom + marginPx
-            } else {
-                targetBounds.top - overlayHeight - marginPx
+        // Candidate 1: Below message bubble
+        val posYBelow = (targetBounds.bottom + marginPx).coerceIn(minY, maxY)
+        val rectBelow = Rect(posX, posYBelow, posX + overlayWidth, posYBelow + overlayHeight)
+
+        // Check if candidate 1 collides with any already placed overlay
+        val collidesBelow = activeOverlays.values.any { other ->
+            other.displayKey != displayKey && Rect.intersects(rectBelow, other.overlayScreenRect)
+        }
+
+        // Candidate 2: Above message bubble
+        val posYAbove = (targetBounds.top - overlayHeight - marginPx).coerceIn(minY, maxY)
+        val rectAbove = Rect(posX, posYAbove, posX + overlayWidth, posYAbove + overlayHeight)
+
+        val collidesAbove = activeOverlays.values.any { other ->
+            other.displayKey != displayKey && Rect.intersects(rectAbove, other.overlayScreenRect)
+        }
+
+        // Candidate 3: Directly covering original Bengali text in-place
+        val posYInPlace = targetBounds.top.coerceIn(minY, maxY)
+
+        val selectedY = when {
+            !collidesBelow && (targetBounds.bottom + overlayHeight + marginPx <= screenH - navBarInsetPx) -> {
+                posYBelow
+            }
+            !collidesAbove && (targetBounds.top - overlayHeight - marginPx >= statusBarInsetPx) -> {
+                posYAbove
+            }
+            else -> {
+                // In-place replacement to guarantee zero overlapping pileups!
+                posYInPlace
             }
         }
 
-        // Strict boundary clamp
-        val minY = statusBarInsetPx
-        val maxY = screenH - navBarInsetPx - overlayHeight
-        posY = posY.coerceIn(minY, maxY.coerceAtLeast(minY))
-
-        return Pair(posX, posY)
+        return Pair(posX, selectedY)
     }
 
     private fun updateOverlayView(
@@ -189,9 +209,10 @@ class OverlayController(
 
         val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
         val (posX, posY) = calculateIntelligentPosition(
+            displayKey = active.displayKey,
             targetBounds = targetBounds,
             overlayWidth = active.view.width.coerceAtLeast(minWidthPx),
-            overlayHeight = active.view.height.coerceAtLeast((28 * density).toInt()),
+            overlayHeight = active.view.height.coerceAtLeast((24 * density).toInt()),
             screenBounds = screenBounds
         )
 
@@ -201,6 +222,7 @@ class OverlayController(
             try {
                 windowManager.updateViewLayout(active.view, lp)
                 active.currentBounds = targetBounds
+                active.overlayScreenRect = Rect(posX, posY, posX + active.view.width, posY + active.view.height)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update overlay view position", e)
             }
