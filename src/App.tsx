@@ -20,7 +20,8 @@ import {
   Eye,
   EyeOff,
   Download,
-  PackageCheck
+  PackageCheck,
+  Languages
 } from 'lucide-react';
 import { downloadProjectZip } from './projectExporter';
 
@@ -288,6 +289,7 @@ export default function App() {
   const [ratioThreshold, setRatioThreshold] = useState<number>(0.20);
   const [selectedFile, setSelectedFile] = useState<string>('BanglaAccessibilityService.kt');
   const [copied, setCopied] = useState<boolean>(false);
+  const [expandedMsgId, setExpandedMsgId] = useState<string | null>(null);
 
   // Chat messages mock
   const chatMessages: Record<'chatA' | 'chatB', MessageBubble[]> = useMemo(() => ({
@@ -344,6 +346,7 @@ export default function App() {
   const switchChat = (target: 'chatA' | 'chatB' | 'home') => {
     const nextGen = sessionGen + 1;
     setSessionGen(nextGen);
+    setExpandedMsgId(null);
     setActiveChat(target);
     if (target === 'home') {
       setStatusLog(prev => [
@@ -413,7 +416,7 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <h1 className="text-lg font-bold text-white tracking-tight">Bangla WhatsApp Translator</h1>
               <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                Native Android 14 (v1.1.0)
+                Native Android 14 (v1.2.0)
               </span>
             </div>
             <p className="text-xs text-slate-400">On-Device ML Kit Accessibility Overlay &amp; Notification Engine</p>
@@ -739,27 +742,49 @@ export default function App() {
                             <div className="text-[9px] text-slate-400 text-right mt-0.5">{msg.time}</div>
                           </div>
 
-                          {/* Render In-App Floating Translation Overlay (IMAGE 2 Inset Design) */}
+                          {/* Render In-App Translation Overlay: Compact Badge (Default) or Expanded Inset (On Tap) */}
                           {overlayEnabled && msg.translated && (
                             <div className={`mt-0.5 max-w-[85%] animate-fadeIn ${msg.isMe ? 'self-end' : 'self-start'}`}>
-                              <div
-                                className={`rounded-[10px] px-2.5 py-1.5 border shadow-sm ${
-                                  msg.isMe
-                                    ? 'bg-[#0B2B20] border-[#144635]'
-                                    : 'bg-[#1F2C34] border-[#2A3942]'
-                                }`}
-                              >
+                              {expandedMsgId === msg.id ? (
+                                /* Expanded State: Full attached translation inset */
                                 <div
-                                  className={`text-[10px] tracking-wide mb-0.5 ${
-                                    msg.isMe ? 'text-[#25D366]' : 'text-[#8696A0]'
+                                  onClick={() => setExpandedMsgId(null)}
+                                  className={`rounded-[10px] px-2.5 py-1.5 border shadow-sm cursor-pointer transition hover:opacity-95 ${
+                                    msg.isMe
+                                      ? 'bg-[#0B2B20] border-[#144635]'
+                                      : 'bg-[#1F2C34] border-[#2A3942]'
                                   }`}
+                                  title="Click to collapse"
                                 >
-                                  বাংলা → English
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span
+                                      className={`text-[10px] tracking-wide ${
+                                        msg.isMe ? 'text-[#25D366]' : 'text-[#8696A0]'
+                                      }`}
+                                    >
+                                      বাংলা → English
+                                    </span>
+                                    <span className="text-[9px] text-slate-500 font-mono ml-2">tap to hide</span>
+                                  </div>
+                                  <p className="text-[12.5px] text-[#E9EDEF] font-normal leading-snug">
+                                    {msg.translated}
+                                  </p>
                                 </div>
-                                <p className="text-[12.5px] text-[#E9EDEF] font-normal leading-snug">
-                                  {msg.translated}
-                                </p>
-                              </div>
+                              ) : (
+                                /* Collapsed State: Sleek compact translate badge */
+                                <button
+                                  onClick={() => setExpandedMsgId(msg.id)}
+                                  className={`flex items-center gap-1 px-2 py-0.5 rounded-[9px] border shadow-sm transition hover:scale-105 active:scale-95 ${
+                                    msg.isMe
+                                      ? 'bg-[#0B2B20] border-[#144635] text-[#25D366]'
+                                      : 'bg-[#1F2C34] border-[#2A3942] text-[#8696A0]'
+                                  }`}
+                                  title="Click to view translation"
+                                >
+                                  <Languages className="w-2.5 h-2.5" />
+                                  <span className="text-[9.5px] font-bold">EN</span>
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
