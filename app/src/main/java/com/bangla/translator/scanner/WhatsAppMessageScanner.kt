@@ -8,6 +8,11 @@ import com.bangla.translator.translation.BengaliDetector
 import java.util.ArrayDeque
 import java.util.regex.Pattern
 
+data class ScanResult(
+    val messages: List<ScannedMessage>,
+    val inputBarTop: Int?
+)
+
 /**
  * Robust scanner for detecting Bengali message elements in WhatsApp and WhatsApp Business.
  * Resilient against DOM/class/ID changes across WhatsApp updates by combining heuristic
@@ -37,25 +42,26 @@ class WhatsAppMessageScanner(
     }
 
     /**
-     * Traverses the active accessibility node hierarchy to discover visible Bengali messages.
+     * Traverses the active accessibility node hierarchy to discover visible Bengali messages
+     * and the WhatsApp typing bar boundary.
      * All traversed AccessibilityNodeInfo objects are guaranteed to be recycled.
      *
      * @param root The root node from AccessibilityService (e.g. rootInActiveWindow).
      * @param screenBounds The screen viewport rectangle used to verify visibility.
      * @param sessionGeneration Current session ID for constructing generation-safe display keys.
-     * @return List of valid ScannedMessage instances.
+     * @return ScanResult containing list of valid messages and the top Y of the typing bar.
      */
     fun scanVisibleMessages(
         root: AccessibilityNodeInfo?,
         screenBounds: Rect,
         sessionGeneration: Long
-    ): List<ScannedMessage> {
-        if (root == null) return emptyList()
+    ): ScanResult {
+        if (root == null) return ScanResult(emptyList(), null)
 
         // 1. Verify package belongs to WhatsApp
         val rootPkg = root.packageName?.toString() ?: ""
         if (rootPkg !in SUPPORTED_PACKAGES) {
-            return emptyList()
+            return ScanResult(emptyList(), null)
         }
 
         val results = mutableListOf<ScannedMessage>()
@@ -64,6 +70,7 @@ class WhatsAppMessageScanner(
 
         val tempBounds = Rect()
         var visitedCount = 0
+        var detectedInputBarTop: Int? = null
         val maxNodesToVisit = 200 // Prevent deep tree performance bottlenecks
 
         try {
@@ -76,6 +83,18 @@ class WhatsAppMessageScanner(
                     if (node.isVisibleToUser) {
                         node.getBoundsInScreen(tempBounds)
 
+                        val className = node.className?.toString() ?: ""
+                        val viewId = node.viewIdResourceName?.lowercase() ?: ""
+
+                        // Check if this node is the WhatsApp message input box or keyboard area
+                        if (node.isEditable || className.contains("EditText") || viewId.contains("entry")) {
+                            if (tempBounds.top > 0) {
+                                if (detectedInputBarTop == null || tempBounds.top < detectedInputBarTop!!) {
+                                    detectedInputBarTop = tempBounds.top
+                                }
+                            }
+                        }
+
                         // Ensure node is within current visible screen viewport
                         val isHorizontallyVisible = tempBounds.right > screenBounds.left && tempBounds.left < screenBounds.right
                         val isVerticallyVisible = tempBounds.bottom > screenBounds.top && tempBounds.top < screenBounds.bottom
@@ -83,8 +102,8 @@ class WhatsAppMessageScanner(
                         // ONLY extract from LEAF text nodes (childCount == 0) or TextViews to prevent
                         // parent ViewGroup containers from creating duplicate overlapping overlays!
                         val isLeafOrText = node.childCount == 0 ||
-                                node.className?.toString()?.contains("TextView") == true ||
-                                node.className?.toString()?.contains("TextEmojiLabel") == true
+                                className.contains("TextView") ||
+                                className.contains("TextEmojiLabel")
 
                         if (isHorizontallyVisible && isVerticallyVisible && isLeafOrText && tempBounds.width() > 15 && tempBounds.height() > 15) {
                             // Check if this node is inside a quoted/reply preview container
@@ -135,7 +154,7 @@ class WhatsAppMessageScanner(
             }
         }
 
-        return results
+        return ScanResult(results, detectedInputBarTop)
     }
 
     /**

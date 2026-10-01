@@ -61,7 +61,8 @@ class OverlayController(
         translatedText: String,
         targetBounds: Rect,
         sessionGeneration: Long,
-        screenBounds: Rect
+        screenBounds: Rect,
+        inputBarTop: Int? = null
     ) {
         runOnMainThread {
             // If already present for this display key, update content & position
@@ -70,7 +71,7 @@ class OverlayController(
                 if (existing.sessionGeneration != sessionGeneration) {
                     removeOverlay(displayKey)
                 } else {
-                    updateOverlayView(existing, translatedText, targetBounds, screenBounds)
+                    updateOverlayView(existing, translatedText, targetBounds, screenBounds, inputBarTop)
                     return@runOnMainThread
                 }
             }
@@ -92,13 +93,16 @@ class OverlayController(
             val measuredHeight = overlayView.measuredHeight.coerceAtLeast((24 * density).toInt())
 
             // Calculate smart collision-free positioning
-            val (posX, posY) = calculateIntelligentPosition(
+            val position = calculateIntelligentPosition(
                 displayKey = displayKey,
                 targetBounds = targetBounds,
                 overlayWidth = measuredWidth,
                 overlayHeight = measuredHeight,
-                screenBounds = screenBounds
-            )
+                screenBounds = screenBounds,
+                inputBarTop = inputBarTop
+            ) ?: return@runOnMainThread // If no room above keyboard/typing bar, skip to avoid covering input
+
+            val (posX, posY) = position
 
             val layoutParams = WindowManager.LayoutParams().apply {
                 type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -131,24 +135,35 @@ class OverlayController(
     }
 
     /**
-     * Determines optimal X/Y coordinates avoiding collision with other active overlays:
-     * 1. Try below message bubble if space available and no collision.
-     * 2. If below collides or exceeds screen, try above message bubble.
-     * 3. If neither fits without collision (common when messages are tightly stacked),
-     *    place in-place directly covering original Bengali text cleanly.
-     * 4. Clamp X and Y strictly within visible screen boundaries.
+     * Determines optimal X/Y coordinates avoiding collision with other active overlays
+     * and strictly never covering the typing input bar or keyboard.
      */
     private fun calculateIntelligentPosition(
         displayKey: String,
         targetBounds: Rect,
         overlayWidth: Int,
         overlayHeight: Int,
-        screenBounds: Rect
-    ): Pair<Int, Int> {
+        screenBounds: Rect,
+        inputBarTop: Int? = null
+    ): Pair<Int, Int>? {
         val screenW = screenBounds.width()
         val screenH = screenBounds.height()
 
-        // 1. Horizontal positioning: align with start of bubble, then clamp
+        // 1. Calculate boundaries: top status bar and bottom typing bar / keyboard limit
+        val minY = statusBarInsetPx
+        val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
+            inputBarTop - (4 * density).toInt()
+        } else {
+            screenH - (navBarInsetPx + (56 * density).toInt())
+        }
+        val maxY = bottomLimit - overlayHeight
+
+        // If target message is completely scrolled beneath the keyboard/typing bar, do not display
+        if (targetBounds.top >= bottomLimit || maxY < minY) {
+            return null
+        }
+
+        // 2. Horizontal positioning
         var posX = targetBounds.left
         if (posX + overlayWidth > screenW - marginPx) {
             posX = screenW - overlayWidth - marginPx
@@ -157,50 +172,72 @@ class OverlayController(
             posX = marginPx
         }
 
-        val minY = statusBarInsetPx
-        val maxY = screenH - navBarInsetPx - overlayHeight
+        val otherOverlays = activeOverlays.values.filter { it.displayKey != displayKey }
 
         // Candidate 1: Below message bubble
-        val posYBelow = (targetBounds.bottom + marginPx).coerceIn(minY, maxY)
+        val posYBelow = targetBounds.bottom + marginPx
         val rectBelow = Rect(posX, posYBelow, posX + overlayWidth, posYBelow + overlayHeight)
+        val collidesBelow = otherOverlays.any { Rect.intersects(rectBelow, it.overlayScreenRect) }
+        val fitsBelow = !collidesBelow && (posYBelow + overlayHeight <= bottomLimit)
 
-        // Check if candidate 1 collides with any already placed overlay
-        val collidesBelow = activeOverlays.values.any { other ->
-            other.displayKey != displayKey && Rect.intersects(rectBelow, other.overlayScreenRect)
+        if (fitsBelow) {
+            return Pair(posX, posYBelow)
         }
 
-        // Candidate 2: Above message bubble
-        val posYAbove = (targetBounds.top - overlayHeight - marginPx).coerceIn(minY, maxY)
+        // Candidate 2: In-place directly over the Bengali text
+        val posYInPlace = targetBounds.top
+        val rectInPlace = Rect(posX, posYInPlace, posX + overlayWidth, posYInPlace + overlayHeight)
+        val collidesInPlace = otherOverlays.any { Rect.intersects(rectInPlace, it.overlayScreenRect) }
+        val fitsInPlace = !collidesInPlace && (posYInPlace >= minY) && (posYInPlace + overlayHeight <= bottomLimit)
+
+        if (fitsInPlace) {
+            return Pair(posX, posYInPlace)
+        }
+
+        // Candidate 3: Above message bubble
+        val posYAbove = targetBounds.top - overlayHeight - marginPx
         val rectAbove = Rect(posX, posYAbove, posX + overlayWidth, posYAbove + overlayHeight)
+        val collidesAbove = otherOverlays.any { Rect.intersects(rectAbove, it.overlayScreenRect) }
+        val fitsAbove = !collidesAbove && (posYAbove >= minY)
 
-        val collidesAbove = activeOverlays.values.any { other ->
-            other.displayKey != displayKey && Rect.intersects(rectAbove, other.overlayScreenRect)
+        if (fitsAbove) {
+            return Pair(posX, posYAbove)
         }
 
-        // Candidate 3: Directly covering original Bengali text in-place
-        val posYInPlace = targetBounds.top.coerceIn(minY, maxY)
-
-        val selectedY = when {
-            !collidesBelow && (targetBounds.bottom + overlayHeight + marginPx <= screenH - navBarInsetPx) -> {
-                posYBelow
-            }
-            !collidesAbove && (targetBounds.top - overlayHeight - marginPx >= statusBarInsetPx) -> {
-                posYAbove
-            }
-            else -> {
-                // In-place replacement to guarantee zero overlapping pileups!
-                posYInPlace
+        // Candidate 4: Stacking cleanly right below the colliding overlay (zero overlap!)
+        val collidingOverlay = otherOverlays.firstOrNull { Rect.intersects(rectBelow, it.overlayScreenRect) }
+        if (collidingOverlay != null) {
+            val yStacked = collidingOverlay.overlayScreenRect.bottom + marginPx
+            val rectStacked = Rect(posX, yStacked, posX + overlayWidth, yStacked + overlayHeight)
+            val collidesStacked = otherOverlays.any { Rect.intersects(rectStacked, it.overlayScreenRect) }
+            if (!collidesStacked && (yStacked + overlayHeight <= bottomLimit)) {
+                return Pair(posX, yStacked)
             }
         }
 
-        return Pair(posX, selectedY)
+        // Candidate 5: Adjacent horizontal placement (for incoming messages on left, place on right wallpaper)
+        val isLeftBubble = targetBounds.left < screenW / 2
+        val altPosX = if (isLeftBubble) {
+            screenW - overlayWidth - marginPx
+        } else {
+            marginPx
+        }
+        val rectAlt = Rect(altPosX, targetBounds.top, altPosX + overlayWidth, targetBounds.top + overlayHeight)
+        val collidesAlt = otherOverlays.any { Rect.intersects(rectAlt, it.overlayScreenRect) }
+        if (!collidesAlt && (targetBounds.top + overlayHeight <= bottomLimit)) {
+            return Pair(altPosX, targetBounds.top)
+        }
+
+        // Guaranteed collision prevention: if all candidates collide, return null rather than stacking!
+        return null
     }
 
     private fun updateOverlayView(
         active: ActiveOverlay,
         translatedText: String,
         targetBounds: Rect,
-        screenBounds: Rect
+        screenBounds: Rect,
+        inputBarTop: Int? = null
     ) {
         val tv = active.view.findViewById<TextView>(R.id.tvTranslatedText)
         if (tv.text != translatedText) {
@@ -208,14 +245,21 @@ class OverlayController(
         }
 
         val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
-        val (posX, posY) = calculateIntelligentPosition(
+        val position = calculateIntelligentPosition(
             displayKey = active.displayKey,
             targetBounds = targetBounds,
             overlayWidth = active.view.width.coerceAtLeast(minWidthPx),
             overlayHeight = active.view.height.coerceAtLeast((24 * density).toInt()),
-            screenBounds = screenBounds
+            screenBounds = screenBounds,
+            inputBarTop = inputBarTop
         )
 
+        if (position == null) {
+            removeOverlay(active.displayKey)
+            return
+        }
+
+        val (posX, posY) = position
         if (lp.x != posX || lp.y != posY) {
             lp.x = posX
             lp.y = posY

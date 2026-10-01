@@ -60,6 +60,7 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
     private val inFlightSet = ConcurrentHashMap<Pair<String, Long>, Boolean>()
 
     private var lastObservedChatWindow: String? = null
+    private var currentTypingBarTop: Int? = null
     private val isWatchdogActive = AtomicBoolean(false)
 
     // Debounced scan task
@@ -73,7 +74,7 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
             if (!isWhatsAppForeground()) {
                 handleLeftWhatsApp()
             } else if (overlayController.activeCount > 0 || inFlightSet.isNotEmpty()) {
-                mainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+                mainHandler.postDelayed(this, 200L)
             } else {
                 isWatchdogActive.set(false)
             }
@@ -204,11 +205,14 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
         val currentGen = sessionGeneration.get()
         val root = rootInActiveWindow ?: return
 
-        val scannedMessages = try {
+        val scanResult = try {
             messageScanner.scanVisibleMessages(root, screenBounds, currentGen)
         } finally {
             root.recycle()
         }
+
+        val scannedMessages = scanResult.messages
+        currentTypingBarTop = scanResult.inputBarTop
 
         val currentVisibleKeySet = HashSet<String>()
         for (msg in scannedMessages) {
@@ -296,8 +300,10 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
             translatedText = translatedText,
             targetBounds = msg.bounds,
             sessionGeneration = taskGeneration,
-            screenBounds = screenBounds
+            screenBounds = screenBounds,
+            inputBarTop = currentTypingBarTop
         )
+        ensureWatchdogRunning()
     }
 
     /**
@@ -317,19 +323,18 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
      * Invoked when the user leaves WhatsApp (Home button, App switcher, or foreign app).
      */
     private fun handleLeftWhatsApp() {
-        if (overlayController.activeCount > 0 || inFlightSet.isNotEmpty()) {
-            Log.d(TAG, "Leaving WhatsApp detected. Invalidating overlays and in-flight tasks.")
-            sessionGeneration.incrementAndGet()
-            overlayController.removeAllOverlays()
-            activeVisibleKeys.clear()
-            inFlightSet.clear()
-        }
+        Log.d(TAG, "Leaving WhatsApp detected. Invalidating overlays and in-flight tasks.")
+        sessionGeneration.incrementAndGet()
+        overlayController.removeAllOverlays()
+        activeVisibleKeys.clear()
+        inFlightSet.clear()
         lastObservedChatWindow = null
+        currentTypingBarTop = null
     }
 
     private fun ensureWatchdogRunning() {
         if (isWatchdogActive.compareAndSet(false, true)) {
-            mainHandler.postDelayed(watchdogRunnable, WATCHDOG_INTERVAL_MS)
+            mainHandler.postDelayed(watchdogRunnable, 200L)
         }
     }
 
