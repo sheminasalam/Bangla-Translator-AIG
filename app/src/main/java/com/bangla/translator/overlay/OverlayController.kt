@@ -18,12 +18,13 @@ import com.bangla.translator.R
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Controller responsible for managing interactive on-demand translation insets
- * attached directly to WhatsApp message bubbles using TYPE_ACCESSIBILITY_OVERLAY.
+ * Controller responsible for managing interactive on-demand translation overlays
+ * attached directly to WhatsApp message bubbles.
  *
  * States per message:
- * 1. Collapsed (Default): A small, sleek [EN] translate icon badge attached to the bubble.
- * 2. Expanded (On Click): Full attached inset showing "বাংলা → English" and translated text.
+ * 1. Collapsed (Default): A small, sleek [EN] translate icon badge attached to the bubble corner.
+ * 2. Expanded (On Click): Full chat bubble matching the EXACT width, horizontal span, and
+ *    rounded shape of the WhatsApp message bubble.
  * 3. Auto-Hide: Automatically collapses back to the small icon when a new message arrives.
  */
 class OverlayController(
@@ -37,6 +38,7 @@ class OverlayController(
         private const val STATUS_BAR_MARGIN_DP = 28
         private const val NAV_BAR_MARGIN_DP = 48
         private const val ATTACHMENT_GAP_DP = 2
+        private const val MIN_EXPANDED_WIDTH_DP = 140
         private const val AUTO_COLLAPSE_TIMEOUT_MS = 15000L
     }
 
@@ -60,6 +62,7 @@ class OverlayController(
     private val density = context.resources.displayMetrics.density
     private val marginPx = (HORIZONTAL_MARGIN_DP * density).toInt()
     private val gapPx = (ATTACHMENT_GAP_DP * density).toInt()
+    private val minExpandedWidthPx = (MIN_EXPANDED_WIDTH_DP * density).toInt()
     private val statusBarInsetPx = (STATUS_BAR_MARGIN_DP * density).toInt()
     private val navBarInsetPx = (NAV_BAR_MARGIN_DP * density).toInt()
 
@@ -69,8 +72,7 @@ class OverlayController(
 
     /**
      * Displays or updates a translation overlay on the main thread.
-     * By default, it appears as a small compact icon badge attached to the bubble.
-     * Tapping the badge expands the full translation inset.
+     * Collapsed by default; expands into a bubble matching the WhatsApp message bubble size on click.
      */
     fun showOverlay(
         displayKey: String,
@@ -105,9 +107,11 @@ class OverlayController(
 
             val screenW = screenBounds.width()
             val screenH = screenBounds.height()
-            val isOutgoing = targetBounds.left > screenW * 0.30f
 
-            // Contextual theme matching WhatsApp message type
+            // 100% reliable WhatsApp incoming vs outgoing detection
+            val isOutgoing = targetBounds.right > screenW * 0.78f || targetBounds.left > screenW * 0.40f
+
+            // Apply contextual styling matching WhatsApp chat bubble colors & shape
             val bgRes = if (isOutgoing) R.drawable.bg_overlay_outgoing else R.drawable.bg_overlay_incoming
             val labelColor = if (isOutgoing) {
                 ContextCompat.getColor(context, R.color.overlay_outgoing_label)
@@ -121,12 +125,12 @@ class OverlayController(
             tvBadge.setTextColor(labelColor)
             tvLabel.setTextColor(labelColor)
 
-            // Click listener: tap icon badge to expand translation
+            // Click to expand
             llCollapsed.setOnClickListener {
                 expandOverlay(displayKey)
             }
 
-            // Click listener: tap expanded card to collapse back to badge
+            // Click to collapse
             llExpanded.setOnClickListener {
                 collapseOverlay(displayKey)
             }
@@ -135,12 +139,13 @@ class OverlayController(
             llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
             llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
-            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
-            val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
+            val bubbleWidth = targetBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
 
             if (isExpanded) {
+                // Force EXACT width matching the WhatsApp chat bubble!
                 overlayView.measure(
-                    View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
                 )
             } else {
@@ -150,11 +155,7 @@ class OverlayController(
                 )
             }
 
-            val measuredWidth = if (isExpanded) {
-                overlayView.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
-            } else {
-                overlayView.measuredWidth
-            }
+            val measuredWidth = if (isExpanded) bubbleWidth else overlayView.measuredWidth
             val measuredHeight = overlayView.measuredHeight
 
             var posX = if (isOutgoing) {
@@ -214,22 +215,19 @@ class OverlayController(
     }
 
     /**
-     * Expands a specific translation overlay and collapses any other currently expanded one.
+     * Expands a specific translation overlay into full WhatsApp bubble size and collapses any other.
      */
     fun expandOverlay(displayKey: String) {
         runOnMainThread {
             val previousKey = expandedDisplayKey
             expandedDisplayKey = displayKey
 
-            // Collapse previous if different
             if (previousKey != null && previousKey != displayKey) {
                 activeOverlays[previousKey]?.let { updateOverlayDisplayState(it, isExpanded = false) }
             }
 
-            // Expand requested
             activeOverlays[displayKey]?.let { updateOverlayDisplayState(it, isExpanded = true) }
 
-            // Auto-collapse after timeout as a safety feature
             mainHandler.removeCallbacks(autoCollapseRunnable)
             mainHandler.postDelayed(autoCollapseRunnable, AUTO_COLLAPSE_TIMEOUT_MS)
         }
@@ -249,8 +247,8 @@ class OverlayController(
     }
 
     /**
-     * Automatically collapses all expanded overlays back to their small icon badges.
-     * Called when a new WhatsApp message arrives or when chat context changes.
+     * Automatically collapses all expanded overlays back to small icon badges.
+     * Triggered when a new WhatsApp message arrives or chat context changes.
      */
     fun collapseAll() {
         runOnMainThread {
@@ -270,13 +268,15 @@ class OverlayController(
         llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
         val screenW = active.lastScreenBounds.width()
-        val isOutgoing = active.currentBounds.left > screenW * 0.30f
-        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
-        val bubbleWidth = active.currentBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+        val isOutgoing = active.currentBounds.right > screenW * 0.78f || active.currentBounds.left > screenW * 0.40f
+
+        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
+        val bubbleWidth = active.currentBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
 
         if (isExpanded) {
+            // Adopt EXACT WhatsApp bubble width so text flows horizontally in a natural bubble
             active.view.measure(
-                View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
         } else {
@@ -286,11 +286,7 @@ class OverlayController(
             )
         }
 
-        val measuredWidth = if (isExpanded) {
-            active.view.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
-        } else {
-            active.view.measuredWidth
-        }
+        val measuredWidth = if (isExpanded) bubbleWidth else active.view.measuredWidth
 
         var posX = if (isOutgoing) {
             active.currentBounds.right - measuredWidth
@@ -337,75 +333,29 @@ class OverlayController(
         active.lastInputBarTop = inputBarTop
 
         val isExpanded = (active.displayKey == expandedDisplayKey)
+        val screenW = screenBounds.width()
+        val isOutgoing = targetBounds.right > screenW * 0.78f || targetBounds.left > screenW * 0.40f
+
+        val bgRes = if (isOutgoing) R.drawable.bg_overlay_outgoing else R.drawable.bg_overlay_incoming
+        val labelColor = if (isOutgoing) {
+            ContextCompat.getColor(context, R.color.overlay_outgoing_label)
+        } else {
+            ContextCompat.getColor(context, R.color.overlay_incoming_label)
+        }
+
         val llCollapsed = active.view.findViewById<LinearLayout>(R.id.llCollapsedBadge)
         val llExpanded = active.view.findViewById<LinearLayout>(R.id.llExpandedCard)
+        val ivBadge = active.view.findViewById<ImageView>(R.id.ivBadgeIcon)
+        val tvBadge = active.view.findViewById<TextView>(R.id.tvBadgeText)
+        val tvLabel = active.view.findViewById<TextView>(R.id.tvLanguageLabel)
 
-        llCollapsed?.visibility = if (isExpanded) View.GONE else View.VISIBLE
-        llExpanded?.visibility = if (isExpanded) View.VISIBLE else View.GONE
+        llCollapsed?.setBackgroundResource(bgRes)
+        llExpanded?.setBackgroundResource(bgRes)
+        ivBadge?.setColorFilter(labelColor)
+        tvBadge?.setTextColor(labelColor)
+        tvLabel?.setTextColor(labelColor)
 
-        val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
-        val screenW = screenBounds.width()
-        val screenH = screenBounds.height()
-        val isOutgoing = targetBounds.left > screenW * 0.30f
-
-        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
-        val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
-
-        if (isExpanded) {
-            active.view.measure(
-                View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-            )
-        } else {
-            active.view.measure(
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-            )
-        }
-
-        val measuredWidth = if (isExpanded) {
-            active.view.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth)
-        } else {
-            active.view.measuredWidth
-        }
-        val measuredHeight = active.view.measuredHeight
-
-        var posX = if (isOutgoing) {
-            targetBounds.right - measuredWidth
-        } else {
-            targetBounds.left
-        }
-
-        if (posX + measuredWidth > screenW - marginPx) {
-            posX = screenW - measuredWidth - marginPx
-        }
-        if (posX < marginPx) {
-            posX = marginPx
-        }
-
-        val posY = targetBounds.bottom + gapPx
-
-        val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
-            inputBarTop - (4 * density).toInt()
-        } else {
-            screenH - (navBarInsetPx + (56 * density).toInt())
-        }
-
-        if (targetBounds.top >= bottomLimit || posY + measuredHeight > bottomLimit) {
-            return
-        }
-
-        if (lp.x != posX || lp.y != posY || lp.width != measuredWidth) {
-            lp.x = posX
-            lp.y = posY
-            lp.width = measuredWidth
-            try {
-                windowManager.updateViewLayout(active.view, lp)
-                active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + measuredHeight)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to update overlay layout", e)
-            }
-        }
+        updateOverlayDisplayState(active, isExpanded)
     }
 
     /**

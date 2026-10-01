@@ -5,5 +5,5 @@
     <stroke
         android:width="0.8dp"
         android:color="@color/overlay_incoming_stroke" />
-    <corners android:radius="11dp" />
+    <corners android:radius="14dp" />
 </shape>

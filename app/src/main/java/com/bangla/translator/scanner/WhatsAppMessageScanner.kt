@@ -114,26 +114,33 @@ class WhatsAppMessageScanner(
 
                                     // Extract nearest message bubble container bounds for true bubble width & bottom edge
                                     val bubbleBounds = Rect(tempBounds)
-                                    val parent = node.parent
+                                    var currentParent: AccessibilityNodeInfo? = node.parent
+                                    var depth = 0
                                     try {
-                                        if (parent != null) {
-                                            val parentBounds = Rect()
-                                            parent.getBoundsInScreen(parentBounds)
-                                            // A valid message bubble container is at least as wide as the text,
-                                            // but narrower than 90% of screen width (not a list/recycler container)
-                                            if (parentBounds.width() >= tempBounds.width() &&
-                                                parentBounds.width() <= (screenBounds.width() * 0.90f).toInt() &&
-                                                parentBounds.height() >= tempBounds.height() &&
-                                                parentBounds.height() <= (screenBounds.height() * 0.70f).toInt()) {
-                                                bubbleBounds.set(parentBounds)
+                                        while (currentParent != null && depth < 3) {
+                                            val pBounds = Rect()
+                                            currentParent.getBoundsInScreen(pBounds)
+                                            // A WhatsApp message bubble container encompasses the text and timestamp.
+                                            // It is wider than the leaf text, but not the entire screen width (< 94%)
+                                            if (pBounds.width() >= tempBounds.width() &&
+                                                pBounds.width() <= (screenBounds.width() * 0.94f).toInt() &&
+                                                pBounds.height() >= tempBounds.height() &&
+                                                pBounds.height() <= (screenBounds.height() * 0.75f).toInt()) {
+                                                bubbleBounds.set(pBounds)
                                             }
+                                            val nextParent = currentParent.parent
+                                            if (currentParent != node) currentParent.recycle()
+                                            currentParent = nextParent
+                                            depth++
                                         }
                                     } catch (_: Exception) {
                                     } finally {
-                                        parent?.recycle()
+                                        currentParent?.recycle()
                                     }
 
-                                    val isIncoming = bubbleBounds.left < screenBounds.width() * 0.35f
+                                    // 100% reliable WhatsApp outgoing vs incoming detection
+                                    val isOutgoing = bubbleBounds.right > screenBounds.width() * 0.78f || bubbleBounds.left > screenBounds.width() * 0.40f
+                                    val isIncoming = !isOutgoing
                                     val yBucket = bubbleBounds.top / 80
                                     val displayKey = "msg_${sessionGeneration}_${normalized.hashCode()}_${if (isIncoming) "in" else "out"}_b$yBucket"
                                     

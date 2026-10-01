@@ -106,8 +106,8 @@ android {
         applicationId = "com.bangla.translator"
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.2.0"
+        versionCode = 8
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -287,7 +287,7 @@ dependencies {
     <stroke
         android:width="0.8dp"
         android:color="@color/overlay_incoming_stroke" />
-    <corners android:radius="11dp" />
+    <corners android:radius="14dp" />
 </shape>
 `,
 
@@ -298,7 +298,7 @@ dependencies {
     <stroke
         android:width="0.8dp"
         android:color="@color/overlay_outgoing_stroke" />
-    <corners android:radius="11dp" />
+    <corners android:radius="14dp" />
 </shape>
 `,
 
@@ -688,7 +688,7 @@ class OverlayController(private val context: Context, private val windowManager:
 
             val screenW = screenBounds.width()
             val screenH = screenBounds.height()
-            val isOutgoing = targetBounds.left > screenW * 0.30f
+            val isOutgoing = targetBounds.right > screenW * 0.78f || targetBounds.left > screenW * 0.40f
             val bgRes = if (isOutgoing) R.drawable.bg_overlay_outgoing else R.drawable.bg_overlay_incoming
             val labelColor = if (isOutgoing) ContextCompat.getColor(context, R.color.overlay_outgoing_label) else ContextCompat.getColor(context, R.color.overlay_incoming_label)
 
@@ -705,16 +705,16 @@ class OverlayController(private val context: Context, private val windowManager:
             llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
             llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
-            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
-            val bubbleWidth = targetBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((140 * density).toInt())
+            val bubbleWidth = targetBounds.width().coerceIn((140 * density).toInt(), maxAllowedWidth)
 
             if (isExpanded) {
-                overlayView.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                overlayView.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             } else {
                 overlayView.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             }
 
-            val measuredWidth = if (isExpanded) overlayView.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth) else overlayView.measuredWidth
+            val measuredWidth = if (isExpanded) bubbleWidth else overlayView.measuredWidth
             var posX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
             if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
             if (posX < marginPx) posX = marginPx
@@ -776,17 +776,17 @@ class OverlayController(private val context: Context, private val windowManager:
         llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
         val screenW = active.lastScreenBounds.width()
-        val isOutgoing = active.currentBounds.left > screenW * 0.30f
-        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((70 * density).toInt())
-        val bubbleWidth = active.currentBounds.width().coerceIn((55 * density).toInt(), maxAllowedWidth)
+        val isOutgoing = active.currentBounds.right > screenW * 0.78f || active.currentBounds.left > screenW * 0.40f
+        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((140 * density).toInt())
+        val bubbleWidth = active.currentBounds.width().coerceIn((140 * density).toInt(), maxAllowedWidth)
 
         if (isExpanded) {
-            active.view.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            active.view.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         } else {
             active.view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         }
 
-        val measuredWidth = if (isExpanded) active.view.measuredWidth.coerceIn((50 * density).toInt(), maxAllowedWidth) else active.view.measuredWidth
+        val measuredWidth = if (isExpanded) bubbleWidth else active.view.measuredWidth
         var posX = if (isOutgoing) active.currentBounds.right - measuredWidth else active.currentBounds.left
         if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
         if (posX < marginPx) posX = marginPx
