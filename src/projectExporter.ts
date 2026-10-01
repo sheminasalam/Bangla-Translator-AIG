@@ -106,8 +106,8 @@ android {
         applicationId = "com.bangla.translator"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -300,6 +300,41 @@ dependencies {
 </ScrollView>
 `,
 
+  'app/src/main/res/layout/layout_floating_toggle.xml': `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/pillToggleContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overlay_card"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:elevation="8dp"
+    android:paddingStart="8dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="4dp">
+
+    <ImageView
+        android:id="@+id/ivToggleIcon"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:src="@drawable/ic_translate"
+        android:contentDescription="@null"
+        app:tint="@color/overlay_subtext" />
+
+    <TextView
+        android:id="@+id/tvToggleText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="5dp"
+        android:text="Hide"
+        android:textStyle="bold"
+        android:textColor="@color/overlay_text"
+        android:textSize="11sp" />
+</LinearLayout>
+`,
+
   'app/src/main/res/layout/layout_translation_overlay.xml': `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -313,37 +348,58 @@ dependencies {
     android:paddingEnd="9dp"
     android:paddingBottom="6dp">
 
-    <!-- Header bar: indicator dot + icon + BN -> EN badge -->
+    <!-- Header bar: indicator dot + icon + BN -> EN badge + ✕ Hide button -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:layout_marginBottom="2dp">
 
-        <View
-            android:layout_width="5dp"
-            android:layout_height="5dp"
-            android:background="@drawable/bg_overlay_card"
-            android:backgroundTint="@color/overlay_dot" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageView
-            android:layout_width="11dp"
-            android:layout_height="11dp"
-            android:layout_marginStart="4dp"
-            android:src="@drawable/ic_translate"
-            android:contentDescription="@null"
-            app:tint="@color/overlay_subtext" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:background="@drawable/bg_overlay_card"
+                android:backgroundTint="@color/overlay_dot" />
 
+            <ImageView
+                android:layout_width="11dp"
+                android:layout_height="11dp"
+                android:layout_marginStart="4dp"
+                android:src="@drawable/ic_translate"
+                android:contentDescription="@null"
+                app:tint="@color/overlay_subtext" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="BENGALI → ENGLISH"
+                android:textStyle="bold"
+                android:textColor="@color/overlay_subtext"
+                android:textSize="8sp"
+                android:letterSpacing="0.05" />
+        </LinearLayout>
+
+        <!-- Discreet Hide Button for this bubble -->
         <TextView
+            android:id="@+id/btnHideOverlay"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:text="BENGALI → ENGLISH"
-            android:textStyle="bold"
+            android:paddingStart="8dp"
+            android:paddingEnd="2dp"
+            android:text="✕"
+            android:textSize="10sp"
             android:textColor="@color/overlay_subtext"
-            android:textSize="8sp"
-            android:letterSpacing="0.05" />
+            android:textStyle="bold"
+            android:contentDescription="Hide this translation" />
     </LinearLayout>
 
     <!-- Translated English text -->

@@ -45,6 +45,10 @@ class OverlayController(
 
     // Map of displayKey -> ActiveOverlay (thread-safe reference map)
     private val activeOverlays = ConcurrentHashMap<String, ActiveOverlay>()
+    private val dismissedKeys = ConcurrentHashMap.newKeySet<String>()
+
+    private var areBubblesHidden = false
+    private var floatingToggleView: View? = null
 
     private val density = context.resources.displayMetrics.density
     private val marginPx = (OVERLAY_MARGIN_DP * density).toInt()
@@ -65,6 +69,11 @@ class OverlayController(
         inputBarTop: Int? = null
     ) {
         runOnMainThread {
+            // If user explicitly dismissed this bubble, don't re-show
+            if (displayKey in dismissedKeys) {
+                return@runOnMainThread
+            }
+
             // If already present for this display key, update content & position
             val existing = activeOverlays[displayKey]
             if (existing != null) {
@@ -81,6 +90,16 @@ class OverlayController(
             val overlayView = inflater.inflate(R.layout.layout_translation_overlay, null)
             val tvTranslated = overlayView.findViewById<TextView>(R.id.tvTranslatedText)
             tvTranslated.text = translatedText
+
+            // Bind individual card hide button ✕
+            val btnHide = overlayView.findViewById<TextView>(R.id.btnHideOverlay)
+            btnHide?.setOnClickListener {
+                dismissedKeys.add(displayKey)
+                removeOverlay(displayKey)
+            }
+
+            // Apply master toggle visibility state
+            overlayView.visibility = if (areBubblesHidden) View.GONE else View.VISIBLE
 
             // Calculate width constraint based on target message bubble
             val desiredWidth = targetBounds.width().coerceIn(minWidthPx, maxWidthPx)
@@ -128,6 +147,7 @@ class OverlayController(
                     currentBounds = targetBounds,
                     overlayScreenRect = placedRect
                 )
+                ensureFloatingToggleAttached(screenBounds)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to attach translation overlay to WindowManager", e)
             }
@@ -309,6 +329,15 @@ class OverlayController(
                     iterator.remove()
                 }
             }
+
+            if (activeOverlays.isEmpty() && floatingToggleView != null) {
+                try {
+                    windowManager.removeView(floatingToggleView)
+                } catch (_: Exception) {}
+                floatingToggleView = null
+            } else {
+                updateFloatingToggleUI()
+            }
         }
     }
 
@@ -325,6 +354,67 @@ class OverlayController(
                 }
             }
             activeOverlays.clear()
+            dismissedKeys.clear()
+            areBubblesHidden = false
+
+            floatingToggleView?.let {
+                try {
+                    windowManager.removeView(it)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error removing floating toggle view", e)
+                }
+                floatingToggleView = null
+            }
+        }
+    }
+
+    private fun ensureFloatingToggleAttached(screenBounds: Rect) {
+        if (floatingToggleView != null) {
+            updateFloatingToggleUI()
+            return
+        }
+
+        val inflater = LayoutInflater.from(context)
+        val toggleView = inflater.inflate(R.layout.layout_floating_toggle, null)
+        val container = toggleView.findViewById<View>(R.id.pillToggleContainer)
+        container.setOnClickListener {
+            toggleAllOverlays()
+        }
+
+        val lp = WindowManager.LayoutParams().apply {
+            type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            gravity = Gravity.TOP or Gravity.END
+            x = (12 * density).toInt()
+            y = (statusBarInsetPx + (10 * density).toInt())
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+        }
+
+        try {
+            windowManager.addView(toggleView, lp)
+            floatingToggleView = toggleView
+            updateFloatingToggleUI()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to attach floating toggle button", e)
+        }
+    }
+
+    private fun updateFloatingToggleUI() {
+        val tv = floatingToggleView?.findViewById<TextView>(R.id.tvToggleText) ?: return
+        val count = activeOverlays.size
+        tv.text = if (areBubblesHidden) "Show ($count)" else "Hide"
+    }
+
+    fun toggleAllOverlays() {
+        areBubblesHidden = !areBubblesHidden
+        updateFloatingToggleUI()
+        for ((_, overlay) in activeOverlays) {
+            overlay.view.visibility = if (areBubblesHidden) View.GONE else View.VISIBLE
         }
     }
 
