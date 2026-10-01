@@ -409,14 +409,14 @@ export default function App() {
       {/* Top Header */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-6 py-4 sticky top-0 z-50 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
-            <span className="text-xl">বা</span>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#25D366] to-[#128C7E] border-2 border-white/90 shadow-md flex items-center justify-center text-white font-bold relative overflow-hidden">
+            <span className="text-sm font-bold tracking-tighter">অ⇄A</span>
           </div>
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-lg font-bold text-white tracking-tight">Bangla WhatsApp Translator</h1>
               <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                Native Android 14 (v1.2.1)
+                Native Android 14 (v1.3.0)
               </span>
             </div>
             <p className="text-xs text-slate-400">On-Device ML Kit Accessibility Overlay &amp; Notification Engine</p>
@@ -711,9 +711,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Messages Scroll View */}
+                    {/* Messages Scroll View (Click anywhere closes expanded translation) */}
                     <div
-                      className="flex-1 p-3 overflow-y-auto space-y-3 relative"
+                      onClick={() => setExpandedMsgId(null)}
+                      className="flex-1 p-3 overflow-y-auto space-y-3 relative cursor-default"
                       style={{
                         backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.02) 1px, transparent 1px)',
                         backgroundSize: '16px 16px'
@@ -725,56 +726,37 @@ export default function App() {
                         </span>
                       </div>
 
-                      {chatMessages[activeChat].map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}
-                        >
-                          {/* Original WhatsApp Bubble */}
-                          <div
-                            className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs shadow-sm relative ${
-                              msg.isMe
-                                ? 'bg-[#005c4b] text-slate-100 rounded-tr-none'
-                                : 'bg-[#202c33] text-slate-100 rounded-tl-none'
-                            }`}
-                          >
-                            <p className="leading-relaxed">{msg.text}</p>
-                            <div className="text-[9px] text-slate-400 text-right mt-0.5">{msg.time}</div>
-                          </div>
+                      {chatMessages[activeChat].map((msg) => {
+                        const isExpanded = expandedMsgId === msg.id;
+                        const isOtherExpanded = expandedMsgId !== null && !isExpanded;
 
-                          {/* Render In-App Translation Overlay: Compact Badge (Default) or Expanded Inset (On Tap) */}
-                          {overlayEnabled && msg.translated && (
-                            <div className={`mt-0.5 max-w-[85%] animate-fadeIn ${msg.isMe ? 'self-end' : 'self-start'}`}>
-                              {expandedMsgId === msg.id ? (
-                                /* Expanded State: Full attached translation inset */
-                                <div
-                                  onClick={() => setExpandedMsgId(null)}
-                                  className={`rounded-[10px] px-2.5 py-1.5 border shadow-sm cursor-pointer transition hover:opacity-95 ${
-                                    msg.isMe
-                                      ? 'bg-[#0B2B20] border-[#144635]'
-                                      : 'bg-[#1F2C34] border-[#2A3942]'
-                                  }`}
-                                  title="Click to collapse"
-                                >
-                                  <div className="flex items-center justify-between mb-0.5">
-                                    <span
-                                      className={`text-[10px] tracking-wide ${
-                                        msg.isMe ? 'text-[#25D366]' : 'text-[#8696A0]'
-                                      }`}
-                                    >
-                                      বাংলা → English
-                                    </span>
-                                    <span className="text-[9px] text-slate-500 font-mono ml-2">tap to hide</span>
-                                  </div>
-                                  <p className="text-[12.5px] text-[#E9EDEF] font-normal leading-snug">
-                                    {msg.translated}
-                                  </p>
-                                </div>
-                              ) : (
-                                /* Collapsed State: Sleek compact translate badge */
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}
+                          >
+                            {/* Message Row with Middle-Side Translation Badge */}
+                            <div className={`flex items-center gap-1.5 max-w-[95%] ${msg.isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                              {/* Original WhatsApp Bubble */}
+                              <div
+                                className={`rounded-lg px-3 py-1.5 text-xs shadow-sm relative ${
+                                  msg.isMe
+                                    ? 'bg-[#005c4b] text-slate-100 rounded-tr-none'
+                                    : 'bg-[#202c33] text-slate-100 rounded-tl-none'
+                                }`}
+                              >
+                                <p className="leading-relaxed">{msg.text}</p>
+                                <div className="text-[9px] text-slate-400 text-right mt-0.5">{msg.time}</div>
+                              </div>
+
+                              {/* Collapsed State: Middle-side badge away from outer screen edge */}
+                              {overlayEnabled && msg.translated && !isExpanded && !isOtherExpanded && (
                                 <button
-                                  onClick={() => setExpandedMsgId(msg.id)}
-                                  className={`flex items-center gap-1 px-2 py-0.5 rounded-[9px] border shadow-sm transition hover:scale-105 active:scale-95 ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedMsgId(msg.id);
+                                  }}
+                                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-[8px] border shadow-sm transition hover:scale-105 active:scale-95 shrink-0 ${
                                     msg.isMe
                                       ? 'bg-[#0B2B20] border-[#144635] text-[#25D366]'
                                       : 'bg-[#1F2C34] border-[#2A3942] text-[#8696A0]'
@@ -782,13 +764,47 @@ export default function App() {
                                   title="Click to view translation"
                                 >
                                   <Languages className="w-2.5 h-2.5" />
-                                  <span className="text-[9.5px] font-bold">EN</span>
+                                  <span className="text-[9px] font-bold">EN</span>
                                 </button>
                               )}
                             </div>
-                          )}
-                        </div>
-                      ))}
+
+                            {/* Expanded State: Chat Bubble matching WhatsApp shape & width */}
+                            {overlayEnabled && msg.translated && isExpanded && (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedMsgId(null);
+                                }}
+                                className={`mt-1 max-w-[85%] animate-fadeIn cursor-pointer ${msg.isMe ? 'self-end' : 'self-start'}`}
+                              >
+                                <div
+                                  className={`rounded-[14px] px-3 py-1.5 border shadow-xl transition ${
+                                    msg.isMe
+                                      ? 'bg-[#0B2B20] border-[#144635]'
+                                      : 'bg-[#202c33] border-[#2A3942]'
+                                  }`}
+                                  title="Click anywhere to close"
+                                >
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span
+                                      className={`text-[10px] tracking-wide font-medium ${
+                                        msg.isMe ? 'text-[#25D366]' : 'text-[#8696A0]'
+                                      }`}
+                                    >
+                                      বাংলা → English
+                                    </span>
+                                    <span className="text-[9px] text-slate-500 font-mono ml-2">click anywhere to close</span>
+                                  </div>
+                                  <p className="text-[13px] text-[#E9EDEF] font-normal leading-snug">
+                                    {msg.translated}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Chat Input Bar */}

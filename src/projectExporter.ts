@@ -106,8 +106,8 @@ android {
         applicationId = "com.bangla.translator"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.2.1"
+        versionCode = 9
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -179,9 +179,9 @@ dependencies {
 
     <application
         android:allowBackup="false"
-        android:icon="@drawable/ic_translate"
+        android:icon="@drawable/ic_app_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_translate"
+        android:roundIcon="@drawable/ic_app_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.BanglaWhatsAppTranslator">
 
@@ -278,6 +278,58 @@ dependencies {
 
     <color name="overlay_text">#E9EDEF</color>
 </resources>
+`,
+
+  'app/src/main/res/drawable/ic_app_launcher.xml': `<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Outer White Halo / Bubble Border -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M256,40 C136.7,40 40,136.7 40,256 C40,296.8 51.5,334.9 71.3,367.4 L46,458.8 L141.1,434 C173.3,452.1 210.6,462.4 250.4,462.5 C252.3,462.5 254.1,462.5 256,462.5 C375.3,462.5 472,365.8 472,246.5 C472,127.2 375.3,40 256,40 Z" />
+
+    <!-- Vibrant Green Speech Bubble -->
+    <path
+        android:fillColor="#25D366"
+        android:pathData="M256,58 C146.6,58 58,146.6 58,256 C58,293.4 68.6,328.3 86.7,358.1 L64.8,436.8 L146.5,415.5 C176.1,432 210.2,441.5 246.6,441.6 C248.4,441.6 250,441.6 251.8,441.6 C361.2,441.6 449.8,353 449.8,243.6 C449.8,134.2 361.2,58 256,58 Z" />
+
+    <!-- Inner Green Gradient Accent / Shadow Layer -->
+    <path
+        android:fillColor="#1DA851"
+        android:pathData="M256,58 C146.6,58 58,146.6 58,256 C58,266.2 58.8,276.1 60.3,285.8 C68.2,387.8 152.8,441.6 251.8,441.6 C361.2,441.6 449.8,353 449.8,243.6 C449.8,220.1 445.6,197.6 438,176.8 C411.4,107.6 340.2,58 256,58 Z" />
+
+    <!-- Top Curved Exchange Arrow (pointing towards A) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M260,145 C305,145 348,168 375,202 L350,212 L405,232 L405,172 L385,188 C354,148 308,124 258,124 C235,124 212,129 192,138 L203,158 C220,150 240,145 260,145 Z" />
+
+    <!-- Bottom Curved Exchange Arrow (pointing towards অ) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M252,367 C207,367 164,344 137,310 L162,300 L107,280 L107,340 L127,324 C158,364 204,388 254,388 C277,388 300,383 320,374 L309,354 C292,362 272,367 252,367 Z" />
+
+    <!-- Bold White Bengali Character 'অ' -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M125,178 L255,178 L255,198 L125,198 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M175,208 C158,208 144,222 144,239 C144,256 158,270 175,270 C186,270 195,264 200,256 C200,278 184,298 162,305 C146,310 132,300 132,284 L114,284 C114,312 136,330 166,323 C198,315 220,285 220,250 L220,240 C214,247 205,252 195,252 C181,252 170,241 170,227 C170,213 181,202 195,202 C204,202 211,206 216,212 L225,204 C215,194 201,188 185,188 L175,208 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M236,178 L256,178 L256,335 L236,335 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M178,285 C200,285 220,270 236,252 L236,275 C222,292 201,305 178,305 Z" />
+
+    <!-- Bold White English Letter 'A' -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M336,182 L312,335 L334,335 L342,285 L384,285 L392,335 L414,335 L390,182 L368,182 Z M346,266 L363,212 L380,266 L346,266 Z" />
+</vector>
 `,
 
   'app/src/main/res/drawable/bg_overlay_incoming.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -630,6 +682,7 @@ class WhatsAppMessageScanner(private val bengaliRatioThreshold: Float = 0.20f) {
   'app/src/main/java/com/bangla/translator/overlay/OverlayController.kt': `package com.bangla.translator.overlay
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
@@ -659,10 +712,13 @@ class OverlayController(private val context: Context, private val windowManager:
 
     private val activeOverlays = ConcurrentHashMap<String, ActiveOverlay>()
     private var expandedDisplayKey: String? = null
+    private var dismissBackdropView: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val density = context.resources.displayMetrics.density
     private val marginPx = (6 * density).toInt()
     private val gapPx = (2 * density).toInt()
+    private val badgeGapPx = (4 * density).toInt()
+    private val minExpandedWidthPx = (140 * density).toInt()
 
     fun showOverlay(displayKey: String, translatedText: String, targetBounds: Rect, sessionGeneration: Long, screenBounds: Rect, inputBarTop: Int? = null) {
         mainHandler.post {
@@ -702,26 +758,40 @@ class OverlayController(private val context: Context, private val windowManager:
             llExpanded.setOnClickListener { collapseOverlay(displayKey) }
 
             val isExpanded = (displayKey == expandedDisplayKey)
-            llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
+            val isOtherExpanded = (expandedDisplayKey != null && !isExpanded)
+            llCollapsed.visibility = if (isExpanded || isOtherExpanded) View.GONE else View.VISIBLE
             llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
-            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((140 * density).toInt())
-            val bubbleWidth = targetBounds.width().coerceIn((140 * density).toInt(), maxAllowedWidth)
+            val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
+            val bubbleWidth = targetBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
+
+            val bottomLimit = if (inputBarTop != null && inputBarTop > (28 * density).toInt()) inputBarTop - (4 * density).toInt() else screenH - (104 * density).toInt()
+            val measuredWidth: Int
+            val measuredHeight: Int
+            val posX: Int
+            val posY: Int
 
             if (isExpanded) {
                 overlayView.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                measuredWidth = bubbleWidth
+                measuredHeight = overlayView.measuredHeight
+                var calculatedX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
+                if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+                if (calculatedX < marginPx) calculatedX = marginPx
+                posX = calculatedX
+                posY = if (targetBounds.bottom + gapPx + measuredHeight <= bottomLimit) targetBounds.bottom + gapPx else (targetBounds.top - measuredHeight - gapPx).coerceAtLeast((28 * density).toInt())
             } else {
                 overlayView.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                measuredWidth = overlayView.measuredWidth
+                measuredHeight = overlayView.measuredHeight
+                var calculatedX = if (isOutgoing) targetBounds.left - measuredWidth - badgeGapPx else targetBounds.right + badgeGapPx
+                if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+                if (calculatedX < marginPx) calculatedX = marginPx
+                posX = calculatedX
+                posY = targetBounds.centerY() - (measuredHeight / 2)
             }
 
-            val measuredWidth = if (isExpanded) bubbleWidth else overlayView.measuredWidth
-            var posX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
-            if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
-            if (posX < marginPx) posX = marginPx
-
-            val posY = targetBounds.bottom + gapPx
-            val bottomLimit = if (inputBarTop != null && inputBarTop > (28 * density).toInt()) inputBarTop - (4 * density).toInt() else screenH - (104 * density).toInt()
-            if (targetBounds.top >= bottomLimit || posY + overlayView.measuredHeight > bottomLimit) return@post
+            if (targetBounds.top >= bottomLimit && !isExpanded) return@post
 
             val lp = WindowManager.LayoutParams().apply {
                 type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -736,7 +806,7 @@ class OverlayController(private val context: Context, private val windowManager:
 
             try {
                 windowManager.addView(overlayView, lp)
-                activeOverlays[displayKey] = ActiveOverlay(overlayView, displayKey, sessionGeneration, targetBounds, screenBounds, inputBarTop, Rect(posX, posY, posX + measuredWidth, posY + overlayView.measuredHeight))
+                activeOverlays[displayKey] = ActiveOverlay(overlayView, displayKey, sessionGeneration, targetBounds, screenBounds, inputBarTop, Rect(posX, posY, posX + measuredWidth, posY + measuredHeight))
             } catch (_: Exception) {}
         }
     }
@@ -745,26 +815,52 @@ class OverlayController(private val context: Context, private val windowManager:
         mainHandler.post {
             val prev = expandedDisplayKey
             expandedDisplayKey = displayKey
+            ensureDismissBackdropAttached()
             if (prev != null && prev != displayKey) activeOverlays[prev]?.let { updateDisplayState(it, false) }
+            for ((key, other) in activeOverlays) {
+                if (key != displayKey) other.view.findViewById<View>(R.id.llCollapsedBadge)?.visibility = View.GONE
+            }
             activeOverlays[displayKey]?.let { updateDisplayState(it, true) }
         }
     }
 
     fun collapseOverlay(displayKey: String) {
-        mainHandler.post {
-            if (expandedDisplayKey == displayKey) {
-                expandedDisplayKey = null
-                activeOverlays[displayKey]?.let { updateDisplayState(it, false) }
-            }
-        }
+        mainHandler.post { collapseAll() }
     }
 
     fun collapseAll() {
         mainHandler.post {
-            val curr = expandedDisplayKey ?: return@post
+            removeDismissBackdrop()
+            val curr = expandedDisplayKey
             expandedDisplayKey = null
-            activeOverlays[curr]?.let { updateDisplayState(it, false) }
+            for ((_, item) in activeOverlays) item.view.findViewById<View>(R.id.llCollapsedBadge)?.visibility = View.VISIBLE
+            if (curr != null) activeOverlays[curr]?.let { updateDisplayState(it, false) }
         }
+    }
+
+    private fun ensureDismissBackdropAttached() {
+        if (dismissBackdropView != null) return
+        val backdrop = View(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { collapseAll() }
+        }
+        val lp = WindowManager.LayoutParams().apply {
+            type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
+        }
+        try {
+            windowManager.addView(backdrop, lp)
+            dismissBackdropView = backdrop
+        } catch (_: Exception) {}
+    }
+
+    private fun removeDismissBackdrop() {
+        val bd = dismissBackdropView ?: return
+        dismissBackdropView = null
+        try { windowManager.removeView(bd) } catch (_: Exception) {}
     }
 
     private fun updateDisplayState(active: ActiveOverlay, isExpanded: Boolean) {
@@ -772,32 +868,48 @@ class OverlayController(private val context: Context, private val windowManager:
         val llExpanded = active.view.findViewById<LinearLayout>(R.id.llExpandedCard) ?: return
         val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
 
-        llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
+        val isOtherExpanded = (expandedDisplayKey != null && !isExpanded)
+        llCollapsed.visibility = if (isExpanded || isOtherExpanded) View.GONE else View.VISIBLE
         llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
         val screenW = active.lastScreenBounds.width()
+        val screenH = active.lastScreenBounds.height()
         val isOutgoing = active.currentBounds.right > screenW * 0.78f || active.currentBounds.left > screenW * 0.40f
-        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast((140 * density).toInt())
-        val bubbleWidth = active.currentBounds.width().coerceIn((140 * density).toInt(), maxAllowedWidth)
+        val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
+        val bubbleWidth = active.currentBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
+        val bottomLimit = if (active.lastInputBarTop != null && active.lastInputBarTop!! > (28 * density).toInt()) active.lastInputBarTop!! - (4 * density).toInt() else screenH - (104 * density).toInt()
+
+        val measuredWidth: Int
+        val measuredHeight: Int
+        val posX: Int
+        val posY: Int
 
         if (isExpanded) {
             active.view.measure(View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            measuredWidth = bubbleWidth
+            measuredHeight = active.view.measuredHeight
+            var calculatedX = if (isOutgoing) active.currentBounds.right - measuredWidth else active.currentBounds.left
+            if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+            if (calculatedX < marginPx) calculatedX = marginPx
+            posX = calculatedX
+            posY = if (active.currentBounds.bottom + gapPx + measuredHeight <= bottomLimit) active.currentBounds.bottom + gapPx else (active.currentBounds.top - measuredHeight - gapPx).coerceAtLeast((28 * density).toInt())
         } else {
             active.view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            measuredWidth = active.view.measuredWidth
+            measuredHeight = active.view.measuredHeight
+            var calculatedX = if (isOutgoing) active.currentBounds.left - measuredWidth - badgeGapPx else active.currentBounds.right + badgeGapPx
+            if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+            if (calculatedX < marginPx) calculatedX = marginPx
+            posX = calculatedX
+            posY = active.currentBounds.centerY() - (measuredHeight / 2)
         }
 
-        val measuredWidth = if (isExpanded) bubbleWidth else active.view.measuredWidth
-        var posX = if (isOutgoing) active.currentBounds.right - measuredWidth else active.currentBounds.left
-        if (posX + measuredWidth > screenW - marginPx) posX = screenW - measuredWidth - marginPx
-        if (posX < marginPx) posX = marginPx
-
-        val posY = active.currentBounds.bottom + gapPx
         lp.x = posX
         lp.y = posY
         lp.width = measuredWidth
         try {
             windowManager.updateViewLayout(active.view, lp)
-            active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + active.view.measuredHeight)
+            active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + measuredHeight)
         } catch (_: Exception) {}
     }
 
@@ -814,7 +926,10 @@ class OverlayController(private val context: Context, private val windowManager:
 
     fun removeOverlay(displayKey: String) {
         mainHandler.post {
-            if (expandedDisplayKey == displayKey) expandedDisplayKey = null
+            if (expandedDisplayKey == displayKey) {
+                expandedDisplayKey = null
+                removeDismissBackdrop()
+            }
             activeOverlays.remove(displayKey)?.let {
                 try { windowManager.removeView(it.view) } catch (_: Exception) {}
             }
@@ -827,7 +942,10 @@ class OverlayController(private val context: Context, private val windowManager:
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 if (entry.key !in currentlyVisibleKeys) {
-                    if (expandedDisplayKey == entry.key) expandedDisplayKey = null
+                    if (expandedDisplayKey == entry.key) {
+                        expandedDisplayKey = null
+                        removeDismissBackdrop()
+                    }
                     try { windowManager.removeView(entry.value.view) } catch (_: Exception) {}
                     iterator.remove()
                 }
@@ -838,6 +956,7 @@ class OverlayController(private val context: Context, private val windowManager:
     fun removeAllOverlays() {
         mainHandler.post {
             expandedDisplayKey = null
+            removeDismissBackdrop()
             for ((_, item) in activeOverlays) {
                 try { windowManager.removeView(item.view) } catch (_: Exception) {}
             }

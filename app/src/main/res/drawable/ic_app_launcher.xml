@@ -1,0 +1,53 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Outer White Halo / Bubble Border -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M256,40 C136.7,40 40,136.7 40,256 C40,296.8 51.5,334.9 71.3,367.4 L46,458.8 L141.1,434 C173.3,452.1 210.6,462.4 250.4,462.5 C252.3,462.5 254.1,462.5 256,462.5 C375.3,462.5 472,365.8 472,246.5 C472,127.2 375.3,40 256,40 Z" />
+
+    <!-- Vibrant Green Speech Bubble -->
+    <path
+        android:fillColor="#25D366"
+        android:pathData="M256,58 C146.6,58 58,146.6 58,256 C58,293.4 68.6,328.3 86.7,358.1 L64.8,436.8 L146.5,415.5 C176.1,432 210.2,441.5 246.6,441.6 C248.4,441.6 250,441.6 251.8,441.6 C361.2,441.6 449.8,353 449.8,243.6 C449.8,134.2 361.2,58 256,58 Z" />
+
+    <!-- Inner Green Gradient Accent / Shadow Layer -->
+    <path
+        android:fillColor="#1DA851"
+        android:pathData="M256,58 C146.6,58 58,146.6 58,256 C58,266.2 58.8,276.1 60.3,285.8 C68.2,387.8 152.8,441.6 251.8,441.6 C361.2,441.6 449.8,353 449.8,243.6 C449.8,220.1 445.6,197.6 438,176.8 C411.4,107.6 340.2,58 256,58 Z" />
+
+    <!-- Top Curved Exchange Arrow (pointing towards A) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M260,145 C305,145 348,168 375,202 L350,212 L405,232 L405,172 L385,188 C354,148 308,124 258,124 C235,124 212,129 192,138 L203,158 C220,150 240,145 260,145 Z" />
+
+    <!-- Bottom Curved Exchange Arrow (pointing towards অ) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M252,367 C207,367 164,344 137,310 L162,300 L107,280 L107,340 L127,324 C158,364 204,388 254,388 C277,388 300,383 320,374 L309,354 C292,362 272,367 252,367 Z" />
+
+    <!-- Bold White Bengali Character 'অ' -->
+    <!-- Top Matra / Horizontal Bar -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M125,178 L255,178 L255,198 L125,198 Z" />
+    <!-- Loop, Arc and Stem of 'অ' -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M175,208 C158,208 144,222 144,239 C144,256 158,270 175,270 C186,270 195,264 200,256 C200,278 184,298 162,305 C146,310 132,300 132,284 L114,284 C114,312 136,330 166,323 C198,315 220,285 220,250 L220,240 C214,247 205,252 195,252 C181,252 170,241 170,227 C170,213 181,202 195,202 C204,202 211,206 216,212 L225,204 C215,194 201,188 185,188 L175,208 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M236,178 L256,178 L256,335 L236,335 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M178,285 C200,285 220,270 236,252 L236,275 C222,292 201,305 178,305 Z" />
+
+    <!-- Bold White English Letter 'A' -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M336,182 L312,335 L334,335 L342,285 L384,285 L392,335 L414,335 L390,182 L368,182 Z M346,266 L363,212 L380,266 L346,266 Z" />
+
+</vector>

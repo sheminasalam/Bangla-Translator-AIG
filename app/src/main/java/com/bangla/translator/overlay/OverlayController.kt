@@ -1,6 +1,7 @@
 package com.bangla.translator.overlay
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
@@ -21,11 +22,14 @@ import java.util.concurrent.ConcurrentHashMap
  * Controller responsible for managing interactive on-demand translation overlays
  * attached directly to WhatsApp message bubbles.
  *
- * States per message:
- * 1. Collapsed (Default): A small, sleek [EN] translate icon badge attached to the bubble corner.
- * 2. Expanded (On Click): Full chat bubble matching the EXACT width, horizontal span, and
- *    rounded shape of the WhatsApp message bubble.
- * 3. Auto-Hide: Automatically collapses back to the small icon when a new message arrives.
+ * Requirements implemented:
+ * 1. Icons are always strictly behind the translation bubble when expanded.
+ * 2. Icon badge placed at the middle of the side away from the outer edge of the screen:
+ *    - Outgoing (right): icon is on the LEFT of the bubble (at vertical middle).
+ *    - Incoming (left): icon is on the RIGHT of the bubble (at vertical middle).
+ *    This prevents collision with the text typing bar for the very last message!
+ * 3. Tapping anywhere on the screen immediately closes the expanded bubble via a
+ *    transparent full-screen dismiss backdrop.
  */
 class OverlayController(
     private val context: Context,
@@ -38,6 +42,7 @@ class OverlayController(
         private const val STATUS_BAR_MARGIN_DP = 28
         private const val NAV_BAR_MARGIN_DP = 48
         private const val ATTACHMENT_GAP_DP = 2
+        private const val BADGE_GAP_DP = 4
         private const val MIN_EXPANDED_WIDTH_DP = 140
         private const val AUTO_COLLAPSE_TIMEOUT_MS = 15000L
     }
@@ -59,9 +64,13 @@ class OverlayController(
     // Key of the currently expanded overlay (null if all are collapsed)
     private var expandedDisplayKey: String? = null
 
+    // Transparent full-screen backdrop to dismiss when clicking anywhere on screen
+    private var dismissBackdropView: View? = null
+
     private val density = context.resources.displayMetrics.density
     private val marginPx = (HORIZONTAL_MARGIN_DP * density).toInt()
     private val gapPx = (ATTACHMENT_GAP_DP * density).toInt()
+    private val badgeGapPx = (BADGE_GAP_DP * density).toInt()
     private val minExpandedWidthPx = (MIN_EXPANDED_WIDTH_DP * density).toInt()
     private val statusBarInsetPx = (STATUS_BAR_MARGIN_DP * density).toInt()
     private val navBarInsetPx = (NAV_BAR_MARGIN_DP * density).toInt()
@@ -72,7 +81,6 @@ class OverlayController(
 
     /**
      * Displays or updates a translation overlay on the main thread.
-     * Collapsed by default; expands into a bubble matching the WhatsApp message bubble size on click.
      */
     fun showOverlay(
         displayKey: String,
@@ -111,7 +119,6 @@ class OverlayController(
             // 100% reliable WhatsApp incoming vs outgoing detection
             val isOutgoing = targetBounds.right > screenW * 0.78f || targetBounds.left > screenW * 0.40f
 
-            // Apply contextual styling matching WhatsApp chat bubble colors & shape
             val bgRes = if (isOutgoing) R.drawable.bg_overlay_outgoing else R.drawable.bg_overlay_incoming
             val labelColor = if (isOutgoing) {
                 ContextCompat.getColor(context, R.color.overlay_outgoing_label)
@@ -136,42 +143,19 @@ class OverlayController(
             }
 
             val isExpanded = (displayKey == expandedDisplayKey)
-            llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
+            val isOtherExpanded = (expandedDisplayKey != null && !isExpanded)
+
+            // If another bubble is expanded, hide this collapsed badge to keep icons behind/hidden
+            llCollapsed.visibility = if (isExpanded || isOtherExpanded) View.GONE else View.VISIBLE
             llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
             val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
             val bubbleWidth = targetBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
 
-            if (isExpanded) {
-                // Force EXACT width matching the WhatsApp chat bubble!
-                overlayView.measure(
-                    View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                )
-            } else {
-                overlayView.measure(
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                )
-            }
-
-            val measuredWidth = if (isExpanded) bubbleWidth else overlayView.measuredWidth
-            val measuredHeight = overlayView.measuredHeight
-
-            var posX = if (isOutgoing) {
-                targetBounds.right - measuredWidth
-            } else {
-                targetBounds.left
-            }
-
-            if (posX + measuredWidth > screenW - marginPx) {
-                posX = screenW - measuredWidth - marginPx
-            }
-            if (posX < marginPx) {
-                posX = marginPx
-            }
-
-            val posY = targetBounds.bottom + gapPx
+            val measuredWidth: Int
+            val measuredHeight: Int
+            val posX: Int
+            val posY: Int
 
             val bottomLimit = if (inputBarTop != null && inputBarTop > statusBarInsetPx + (100 * density).toInt()) {
                 inputBarTop - (4 * density).toInt()
@@ -179,7 +163,51 @@ class OverlayController(
                 screenH - (navBarInsetPx + (56 * density).toInt())
             }
 
-            if (targetBounds.top >= bottomLimit || posY + measuredHeight > bottomLimit) {
+            if (isExpanded) {
+                overlayView.measure(
+                    View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+                measuredWidth = bubbleWidth
+                measuredHeight = overlayView.measuredHeight
+
+                var calculatedX = if (isOutgoing) targetBounds.right - measuredWidth else targetBounds.left
+                if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+                if (calculatedX < marginPx) calculatedX = marginPx
+                posX = calculatedX
+
+                // Vertical placement for expanded bubble: prefer below; if too close to bottom limit, place above!
+                posY = if (targetBounds.bottom + gapPx + measuredHeight <= bottomLimit) {
+                    targetBounds.bottom + gapPx
+                } else {
+                    (targetBounds.top - measuredHeight - gapPx).coerceAtLeast(statusBarInsetPx)
+                }
+            } else {
+                // Collapsed State: Icon badge placed at the middle of the side away from the outer edge of screen!
+                overlayView.measure(
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+                measuredWidth = overlayView.measuredWidth
+                measuredHeight = overlayView.measuredHeight
+
+                var calculatedX = if (isOutgoing) {
+                    // Outgoing bubble on right -> place icon on LEFT side of bubble
+                    targetBounds.left - measuredWidth - badgeGapPx
+                } else {
+                    // Incoming bubble on left -> place icon on RIGHT side of bubble
+                    targetBounds.right + badgeGapPx
+                }
+                if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+                if (calculatedX < marginPx) calculatedX = marginPx
+                posX = calculatedX
+
+                // Middle of the side of the bubble vertically!
+                posY = targetBounds.centerY() - (measuredHeight / 2)
+            }
+
+            // Don't show if scrolled off screen
+            if (targetBounds.top >= bottomLimit && !isExpanded) {
                 return@runOnMainThread
             }
 
@@ -194,6 +222,10 @@ class OverlayController(
                 y = posY
                 width = measuredWidth
                 height = WindowManager.LayoutParams.WRAP_CONTENT
+            }
+
+            if (isExpanded) {
+                overlayView.elevation = 24 * density
             }
 
             try {
@@ -215,18 +247,35 @@ class OverlayController(
     }
 
     /**
-     * Expands a specific translation overlay into full WhatsApp bubble size and collapses any other.
+     * Expands a specific translation overlay:
+     * 1. Attaches a transparent full-screen backdrop so clicking ANYWHERE dismisses it.
+     * 2. Hides other collapsed badges so no icons cover the text.
+     * 3. Sets higher elevation on the expanded bubble.
      */
     fun expandOverlay(displayKey: String) {
         runOnMainThread {
             val previousKey = expandedDisplayKey
             expandedDisplayKey = displayKey
 
+            // Attach full-screen backdrop so clicking anywhere closes the expanded bubble
+            ensureDismissBackdropAttached()
+
+            // Collapse previous if different
             if (previousKey != null && previousKey != displayKey) {
                 activeOverlays[previousKey]?.let { updateOverlayDisplayState(it, isExpanded = false) }
             }
 
-            activeOverlays[displayKey]?.let { updateOverlayDisplayState(it, isExpanded = true) }
+            // Hide other collapsed badges while translation bubble is open
+            for ((key, other) in activeOverlays) {
+                if (key != displayKey) {
+                    other.view.findViewById<View>(R.id.llCollapsedBadge)?.visibility = View.GONE
+                }
+            }
+
+            // Expand requested bubble on top
+            activeOverlays[displayKey]?.let { active ->
+                updateOverlayDisplayState(active, isExpanded = true)
+            }
 
             mainHandler.removeCallbacks(autoCollapseRunnable)
             mainHandler.postDelayed(autoCollapseRunnable, AUTO_COLLAPSE_TIMEOUT_MS)
@@ -239,24 +288,71 @@ class OverlayController(
     fun collapseOverlay(displayKey: String) {
         runOnMainThread {
             if (expandedDisplayKey == displayKey) {
-                expandedDisplayKey = null
-                mainHandler.removeCallbacks(autoCollapseRunnable)
-                activeOverlays[displayKey]?.let { updateOverlayDisplayState(it, isExpanded = false) }
+                collapseAll()
             }
         }
     }
 
     /**
-     * Automatically collapses all expanded overlays back to small icon badges.
-     * Triggered when a new WhatsApp message arrives or chat context changes.
+     * Automatically collapses all expanded overlays back to small icon badges
+     * and removes the full-screen dismiss backdrop.
      */
     fun collapseAll() {
         runOnMainThread {
             mainHandler.removeCallbacks(autoCollapseRunnable)
-            val currentExpanded = expandedDisplayKey ?: return@runOnMainThread
+            removeDismissBackdrop()
+
+            val currentExpanded = expandedDisplayKey
             expandedDisplayKey = null
-            activeOverlays[currentExpanded]?.let { updateOverlayDisplayState(it, isExpanded = false) }
+
+            // Restore all collapsed badges
+            for ((_, overlay) in activeOverlays) {
+                overlay.view.findViewById<View>(R.id.llCollapsedBadge)?.visibility = View.VISIBLE
+            }
+
+            if (currentExpanded != null) {
+                activeOverlays[currentExpanded]?.let { updateOverlayDisplayState(it, isExpanded = false) }
+            }
         }
+    }
+
+    /**
+     * Creates and attaches a full-screen transparent view to intercept taps anywhere on screen.
+     */
+    private fun ensureDismissBackdropAttached() {
+        if (dismissBackdropView != null) return
+        val backdrop = View(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true
+            isFocusable = false
+            setOnClickListener {
+                collapseAll()
+            }
+        }
+        val lp = WindowManager.LayoutParams().apply {
+            type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            format = PixelFormat.TRANSLUCENT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
+        }
+        try {
+            windowManager.addView(backdrop, lp)
+            dismissBackdropView = backdrop
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to attach dismiss backdrop", e)
+        }
+    }
+
+    private fun removeDismissBackdrop() {
+        val backdrop = dismissBackdropView ?: return
+        dismissBackdropView = null
+        try {
+            windowManager.removeView(backdrop)
+        } catch (_: Exception) {}
     }
 
     private fun updateOverlayDisplayState(active: ActiveOverlay, isExpanded: Boolean) {
@@ -264,44 +360,69 @@ class OverlayController(
         val llExpanded = active.view.findViewById<LinearLayout>(R.id.llExpandedCard) ?: return
         val lp = active.view.layoutParams as? WindowManager.LayoutParams ?: return
 
-        llCollapsed.visibility = if (isExpanded) View.GONE else View.VISIBLE
+        val isOtherExpanded = (expandedDisplayKey != null && !isExpanded)
+        llCollapsed.visibility = if (isExpanded || isOtherExpanded) View.GONE else View.VISIBLE
         llExpanded.visibility = if (isExpanded) View.VISIBLE else View.GONE
 
         val screenW = active.lastScreenBounds.width()
+        val screenH = active.lastScreenBounds.height()
         val isOutgoing = active.currentBounds.right > screenW * 0.78f || active.currentBounds.left > screenW * 0.40f
 
         val maxAllowedWidth = (screenW - (marginPx * 2)).coerceAtLeast(minExpandedWidthPx)
         val bubbleWidth = active.currentBounds.width().coerceIn(minExpandedWidthPx, maxAllowedWidth)
 
+        val bottomLimit = if (active.lastInputBarTop != null && active.lastInputBarTop!! > statusBarInsetPx + (100 * density).toInt()) {
+            active.lastInputBarTop!! - (4 * density).toInt()
+        } else {
+            screenH - (navBarInsetPx + (56 * density).toInt())
+        }
+
+        val measuredWidth: Int
+        val measuredHeight: Int
+        val posX: Int
+        val posY: Int
+
         if (isExpanded) {
-            // Adopt EXACT WhatsApp bubble width so text flows horizontally in a natural bubble
+            // Adopt EXACT WhatsApp bubble width
             active.view.measure(
                 View.MeasureSpec.makeMeasureSpec(bubbleWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
+            measuredWidth = bubbleWidth
+            measuredHeight = active.view.measuredHeight
+
+            var calculatedX = if (isOutgoing) active.currentBounds.right - measuredWidth else active.currentBounds.left
+            if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+            if (calculatedX < marginPx) calculatedX = marginPx
+            posX = calculatedX
+
+            posY = if (active.currentBounds.bottom + gapPx + measuredHeight <= bottomLimit) {
+                active.currentBounds.bottom + gapPx
+            } else {
+                (active.currentBounds.top - measuredHeight - gapPx).coerceAtLeast(statusBarInsetPx)
+            }
+            active.view.elevation = 24 * density
         } else {
+            // Collapsed: middle of the side away from outer edge of screen
             active.view.measure(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
-        }
+            measuredWidth = active.view.measuredWidth
+            measuredHeight = active.view.measuredHeight
 
-        val measuredWidth = if (isExpanded) bubbleWidth else active.view.measuredWidth
+            var calculatedX = if (isOutgoing) {
+                active.currentBounds.left - measuredWidth - badgeGapPx
+            } else {
+                active.currentBounds.right + badgeGapPx
+            }
+            if (calculatedX + measuredWidth > screenW - marginPx) calculatedX = screenW - measuredWidth - marginPx
+            if (calculatedX < marginPx) calculatedX = marginPx
+            posX = calculatedX
 
-        var posX = if (isOutgoing) {
-            active.currentBounds.right - measuredWidth
-        } else {
-            active.currentBounds.left
+            posY = active.currentBounds.centerY() - (measuredHeight / 2)
+            active.view.elevation = 2 * density
         }
-
-        if (posX + measuredWidth > screenW - marginPx) {
-            posX = screenW - measuredWidth - marginPx
-        }
-        if (posX < marginPx) {
-            posX = marginPx
-        }
-
-        val posY = active.currentBounds.bottom + gapPx
 
         lp.x = posX
         lp.y = posY
@@ -310,7 +431,7 @@ class OverlayController(
 
         try {
             windowManager.updateViewLayout(active.view, lp)
-            active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + active.view.measuredHeight)
+            active.overlayScreenRect = Rect(posX, posY, posX + measuredWidth, posY + measuredHeight)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update overlay view display state", e)
         }
@@ -365,6 +486,7 @@ class OverlayController(
         runOnMainThread {
             if (expandedDisplayKey == displayKey) {
                 expandedDisplayKey = null
+                removeDismissBackdrop()
                 mainHandler.removeCallbacks(autoCollapseRunnable)
             }
             val removed = activeOverlays.remove(displayKey) ?: return@runOnMainThread
@@ -387,6 +509,7 @@ class OverlayController(
                 if (entry.key !in currentlyVisibleKeys) {
                     if (expandedDisplayKey == entry.key) {
                         expandedDisplayKey = null
+                        removeDismissBackdrop()
                         mainHandler.removeCallbacks(autoCollapseRunnable)
                     }
                     try {
@@ -406,6 +529,7 @@ class OverlayController(
     fun removeAllOverlays() {
         runOnMainThread {
             expandedDisplayKey = null
+            removeDismissBackdrop()
             mainHandler.removeCallbacks(autoCollapseRunnable)
             for ((key, overlay) in activeOverlays) {
                 try {
