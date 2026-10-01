@@ -111,7 +111,9 @@ class WhatsAppMessageScanner(
                                 val candidateText = extractCandidateText(node)
                                 if (candidateText != null && isLikelyBengaliMessage(candidateText, node)) {
                                     val normalized = candidateText.trim().replace(Regex("\\s+"), " ")
-                                    val displayKey = "gen_${sessionGeneration}_${normalized.hashCode()}_${tempBounds.left}_${tempBounds.top}"
+                                    val isIncoming = tempBounds.left < screenBounds.width() / 2
+                                    val yBucket = tempBounds.top / 80
+                                    val displayKey = "msg_${sessionGeneration}_${normalized.hashCode()}_${if (isIncoming) "in" else "out"}_b$yBucket"
                                     
                                     // Spatial de-duplication: avoid adding duplicate items if overlapping with an existing scanned message
                                     val isDuplicate = results.any { existing ->

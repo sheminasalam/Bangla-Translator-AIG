@@ -228,8 +228,13 @@ class OverlayController(
             return Pair(altPosX, targetBounds.top)
         }
 
-        // Guaranteed collision prevention: if all candidates collide, return null rather than stacking!
-        return null
+        // Guaranteed collision prevention: if all candidates collide, return the best non-overlapping position
+        val bestY = if (posYBelow + overlayHeight <= bottomLimit) {
+            posYBelow
+        } else {
+            posYInPlace.coerceIn(minY, maxY)
+        }
+        return Pair(posX, bestY)
     }
 
     private fun updateOverlayView(
@@ -254,8 +259,8 @@ class OverlayController(
             inputBarTop = inputBarTop
         )
 
+        // If no safe position exists (e.g. scrolled under keyboard), leave current position untouched!
         if (position == null) {
-            removeOverlay(active.displayKey)
             return
         }
 

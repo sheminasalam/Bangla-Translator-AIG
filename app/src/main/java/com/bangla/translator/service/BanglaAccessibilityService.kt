@@ -36,6 +36,12 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
         private const val WATCHDOG_INTERVAL_MS = 350L
 
         val SUPPORTED_PACKAGES = setOf("com.whatsapp", "com.whatsapp.w4b")
+        val SYSTEM_OVERLAY_PACKAGES = setOf(
+            "com.bangla.translator",
+            "com.bangla.translator.debug",
+            "com.android.systemui",
+            "android"
+        )
 
         @Volatile
         var isServiceRunning: Boolean = false
@@ -62,6 +68,7 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
     private var lastObservedChatWindow: String? = null
     private var currentTypingBarTop: Int? = null
     private val isWatchdogActive = AtomicBoolean(false)
+    private var nonForegroundCount = 0
 
     // Debounced scan task
     private val scanRunnable = Runnable {
@@ -72,11 +79,20 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
     private val watchdogRunnable = object : Runnable {
         override fun run() {
             if (!isWhatsAppForeground()) {
-                handleLeftWhatsApp()
-            } else if (overlayController.activeCount > 0 || inFlightSet.isNotEmpty()) {
-                mainHandler.postDelayed(this, 200L)
+                nonForegroundCount++
+                if (nonForegroundCount >= 2) {
+                    handleLeftWhatsApp()
+                    nonForegroundCount = 0
+                } else {
+                    mainHandler.postDelayed(this, 300L)
+                }
             } else {
-                isWatchdogActive.set(false)
+                nonForegroundCount = 0
+                if (overlayController.activeCount > 0 || inFlightSet.isNotEmpty()) {
+                    mainHandler.postDelayed(this, 300L)
+                } else {
+                    isWatchdogActive.set(false)
+                }
             }
         }
     }
@@ -114,9 +130,14 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
         if (event == null) return
         val pkg = event.packageName?.toString() ?: ""
 
-        // Discard events from non-WhatsApp apps
+        // Ignore events from our own overlay windows, system UI, and keyboards
+        if (pkg in SYSTEM_OVERLAY_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard") || pkg.contains("ime")) {
+            return
+        }
+
+        // If a foreign application or launcher window state changed, user left WhatsApp
         if (pkg !in SUPPORTED_PACKAGES) {
-            if (pkg.isNotEmpty() && !pkg.contains("inputmethod")) {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg.isNotEmpty()) {
                 handleLeftWhatsApp()
             }
             return
@@ -310,11 +331,14 @@ class BanglaAccessibilityService : AccessibilityService(), SharedPreferences.OnS
      * Checks if WhatsApp or WhatsApp Business is the active foreground app.
      */
     private fun isWhatsAppForeground(): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = rootInActiveWindow ?: return true // Do NOT assume left on transient null root!
         val pkg = try {
             root.packageName?.toString() ?: ""
         } finally {
             root.recycle()
+        }
+        if (pkg.isEmpty() || pkg in SYSTEM_OVERLAY_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")) {
+            return true
         }
         return pkg in SUPPORTED_PACKAGES
     }

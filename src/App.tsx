@@ -413,7 +413,7 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <h1 className="text-lg font-bold text-white tracking-tight">Bangla WhatsApp Translator</h1>
               <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                Native Android 14 (v1.0.1)
+                Native Android 14 (v1.0.2)
               </span>
             </div>
             <p className="text-xs text-slate-400">On-Device ML Kit Accessibility Overlay &amp; Notification Engine</p>
