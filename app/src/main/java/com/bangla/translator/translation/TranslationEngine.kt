@@ -128,16 +128,52 @@ object TranslationEngine {
         return downloadTask
     }
 
+    private val CONVERSATIONAL_MAP = mapOf(
+        "কি দরকার ছিল" to "What was the need?",
+        "কি দরকার ছিল?" to "What was the need?",
+        "কি দরকার" to "What is the need?",
+        "কি দরকার?" to "What is the need?",
+        "দরকার ছিল না" to "There was no need for that",
+        "দরকার ছিল না।" to "There was no need for that",
+        "কি অবস্থা" to "How are things?",
+        "কি খবর" to "What's up?",
+        "খবর কি" to "What's up?",
+        "কেমন আছেন" to "How are you?",
+        "কেমন আছো" to "How are you?",
+        "কেমন আছিস" to "How are you?",
+        "ভালো আছি" to "I'm doing well",
+        "ভালো" to "Good",
+        "হুম" to "Hmm",
+        "হুম্ম" to "Hmm",
+        "হ্যাঁ" to "Yes",
+        "হ" to "Yeah",
+        "না" to "No",
+        "ওকে" to "Okay",
+        "আচ্ছা" to "Alright",
+        "ঠিক আছে" to "Alright",
+        "প্যারা নাই" to "No worries",
+        "প্যারা নেই" to "No worries",
+        "কিরে" to "Hey",
+        "ঘুমাবো" to "Going to sleep",
+        "ঘুমাইতে গেলাম" to "Going to sleep",
+        "শুভ রাত্রি" to "Good night",
+        "শুভ সকাল" to "Good morning",
+        "ধন্যবাদ" to "Thank you",
+        "অনেক ধন্যবাদ" to "Thanks a lot",
+        "স্বাগতম" to "You're welcome",
+        "বুঝলাম" to "Understood",
+        "বুঝতে পারছি" to "I understand",
+        "বুঝতে পারছি না" to "I don't understand",
+        "আমি কি বলবো" to "What should I say",
+        "কি বলবো" to "What can I say"
+    )
+
     /**
      * Translates Bengali text to English.
-     * First queries the in-memory TranslationCache. If missing, requests ML Kit.
-     */
-    /**
-     * Translates Bengali text to English.
-     * 1. Checks in-memory cache.
-     * 2. Attempts high-accuracy Google conversational translation (online).
+     * 1. Checks conversational dictionary and in-memory cache.
+     * 2. Attempts high-accuracy online neural translation.
      * 3. Seamlessly falls back to on-device ML Kit if offline.
-     * 4. Post-processes colloquial chat words and idioms.
+     * 4. Post-processes colloquial chat words, currency, and idioms.
      */
     fun translate(
         text: String,
@@ -150,14 +186,22 @@ object TranslationEngine {
             return
         }
 
-        // 1. Check cache first
+        // 1. Check conversational dictionary for instant 100% natural chat phrases
+        val directMatch = CONVERSATIONAL_MAP[normalized] ?: CONVERSATIONAL_MAP[normalized.trim('?', '!', '।', '.', ' ')]
+        if (directMatch != null) {
+            cache.put(normalized, directMatch)
+            onSuccess(directMatch)
+            return
+        }
+
+        // 2. Check cache
         val cachedTranslation = cache.get(normalized)
         if (cachedTranslation != null) {
             onSuccess(cachedTranslation)
             return
         }
 
-        // 2. Attempt high-accuracy online translation in background
+        // 3. Attempt high-accuracy online translation in background
         networkExecutor.execute {
             val onlineResult = translateOnline(normalized)
             if (onlineResult != null && onlineResult.isNotBlank()) {
@@ -167,7 +211,7 @@ object TranslationEngine {
                 return@execute
             }
 
-            // 3. Fallback to on-device ML Kit
+            // 4. Fallback to on-device ML Kit
             if (_modelState.value !is ModelDownloadState.Ready) {
                 // If model not ready and offline, trigger failure
                 onFailure(IllegalStateException("Translation model is not ready. Current state: ${_modelState.value}"))
@@ -189,21 +233,28 @@ object TranslationEngine {
     }
 
     /**
-     * Fast, lightweight Google online translation API call for natural conversational Bengali.
+     * Fast, lightweight online neural translation API call for natural conversational Bengali.
      */
     private fun translateOnline(text: String): String? {
         return try {
             val encoded = URLEncoder.encode(text, "UTF-8")
-            val url = URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=bn&tl=en&dt=t&q=$encoded")
+            val url = URL("https://api.mymemory.translated.net/get?q=$encoded&langpair=bn|en")
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 2500
-            conn.readTimeout = 2500
+            conn.connectTimeout = 3000
+            conn.readTimeout = 3000
             conn.requestMethod = "GET"
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
 
             if (conn.responseCode == 200) {
                 val response = conn.inputStream.bufferedReader().use { it.readText() }
-                parseGtxResponse(response)
+                val json = org.json.JSONObject(response)
+                val responseData = json.optJSONObject("responseData")
+                val translated = responseData?.optString("translatedText")
+                if (!translated.isNullOrBlank() && !translated.startsWith("MYMEMORY WARNING")) {
+                    translated
+                } else {
+                    null
+                }
             } else {
                 null
             }
@@ -212,58 +263,62 @@ object TranslationEngine {
         }
     }
 
-    private fun parseGtxResponse(json: String): String? {
-        return try {
-            val array = JSONArray(json)
-            val sentences = array.getJSONArray(0)
-            val sb = StringBuilder()
-            for (i in 0 until sentences.length()) {
-                val sentence = sentences.getJSONArray(i)
-                sb.append(sentence.getString(0))
-            }
-            sb.toString().trim()
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     /**
-     * Post-processes common Bengali WhatsApp idioms and terms of endearment that
+     * Post-processes common Bengali WhatsApp idioms, currency, and syntax quirks that
      * machine translation engines often mistranslate literally.
      */
     private fun postProcessBengaliChat(originalBengali: String, rawEnglish: String): String {
         var text = rawEnglish
 
-        // 1. "সোনা" used as an address / vocative (mistranslated as "gold")
+        // 1. Currency: "Rs." or "Rs " -> "Tk " (Taka, not Indian Rupees)
+        text = text.replace(Regex("(?i)\\bRs\\.?\\s*([0-9])"), "Tk $1")
+        text = text.replace(Regex("(?i)\\bRupees?\\b"), "Taka")
+
+        // 2. Syntax cleanup: "That you earned..." -> "You earned..."
+        if (text.startsWith("That ", ignoreCase = true) && text.length > 5 && text[5].isLetter()) {
+            text = text.substring(5).replaceFirstChar { it.uppercase() }
+        }
+
+        // 3. "We need not say" error -> "What was the need?"
+        if (originalBengali.contains("দরকার") && text.contains("need not say", ignoreCase = true)) {
+            text = "What was the need?"
+        }
+
+        // 4. "সোনা" (vocative babe / sweetheart / honey)
         if (originalBengali.contains("সোনা")) {
             text = text.replace(Regex("(?i)\\b(doing|are you|hello|hi|hey|my|dear|good morning|good night)\\s+gold\\b"), "$1 sweetheart")
             text = text.replace(Regex("(?i)\\bgold\\b([,!?\\s]*$)"), "sweetheart$1")
-            text = text.replace(Regex("(?i)^gold[,\\s]+"), "Sweetheart, ")
+            text = text.replace(Regex("(?i)^gold[,\\s]+"), "Honey, ")
         }
 
-        // 2. "বাবু" (baby/babe)
+        // 5. "বাবু" -> "babe"
         if (originalBengali.contains("বাবু")) {
             text = text.replace(Regex("(?i)\\bbabu\\b"), "babe")
         }
 
-        // 3. "মাজতে" / "দাঁত মাজা" (teeth brushing, mistranslated as "mazz")
+        // 6. "মাজতে" / "দাঁত মাজা" -> "brush teeth"
         if (originalBengali.contains("মাজতে") || originalBengali.contains("মাজা")) {
             text = text.replace(Regex("(?i)\\bgoing to mazz\\b"), "going to brush my teeth")
             text = text.replace(Regex("(?i)\\bmazz\\b"), "brush teeth")
         }
 
-        // 4. "প্যারা নাই" / "প্যারা" (no worries / tension)
+        // 7. "ওয়াকফা" -> "pause / break"
+        if (originalBengali.contains("ওয়াকফা")) {
+            text = text.replace(Regex("(?i)\\bwakfa(k)?\\b"), "pause")
+        }
+
+        // 8. "প্যারা নাই" -> "no worries"
         if (originalBengali.contains("প্যারা নাই") || originalBengali.contains("প্যারা নেই")) {
             text = text.replace(Regex("(?i)\\bno pair\\b"), "no worries")
             text = text.replace(Regex("(?i)\\bno tension\\b"), "no worries")
         }
 
-        // 5. "কিরে" / "কি খবর"
+        // 9. "কিরে" -> "hey"
         if (originalBengali.contains("কিরে")) {
             text = text.replace(Regex("(?i)\\bwhat ray\\b"), "hey")
         }
 
-        // 6. "হারিয়ে যেয়ো না" (stay in touch / don't disappear)
+        // 10. "হারিয়ে যেয়ো না" -> "never get lost"
         if (originalBengali.contains("হারিয়ে যেয়ো না") || originalBengali.contains("হারিয়ে যেও না")) {
             text = text.replace(Regex("(?i)\\bdo not be lost\\b"), "never get lost")
             text = text.replace(Regex("(?i)\\bdon't be lost\\b"), "never get lost")

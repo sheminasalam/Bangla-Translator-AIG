@@ -101,14 +101,17 @@ class OverlayController(
             // Apply master toggle visibility state
             overlayView.visibility = if (areBubblesHidden) View.GONE else View.VISIBLE
 
+            val screenW = screenBounds.width()
+            val maxAvailableCardWidth = screenW - (marginPx * 2)
+
             // Calculate width constraint based on target message bubble
-            val desiredWidth = targetBounds.width().coerceIn(minWidthPx, maxWidthPx)
+            val desiredWidth = targetBounds.width().coerceIn(minWidthPx, maxAvailableCardWidth)
             overlayView.measure(
                 View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
 
-            val measuredWidth = overlayView.measuredWidth.coerceIn(minWidthPx, maxWidthPx)
+            val measuredWidth = overlayView.measuredWidth.coerceIn(minWidthPx, maxAvailableCardWidth)
             val measuredHeight = overlayView.measuredHeight.coerceAtLeast((24 * density).toInt())
 
             // Calculate smart collision-free positioning
@@ -128,12 +131,11 @@ class OverlayController(
                 format = PixelFormat.TRANSLUCENT
                 flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 gravity = Gravity.TOP or Gravity.START
                 x = posX
                 y = posY
-                width = WindowManager.LayoutParams.WRAP_CONTENT
+                width = measuredWidth
                 height = WindowManager.LayoutParams.WRAP_CONTENT
             }
 
@@ -183,8 +185,17 @@ class OverlayController(
             return null
         }
 
-        // 2. Horizontal positioning
-        var posX = targetBounds.left
+        // 2. Horizontal positioning:
+        // Outgoing message (green bubble on right side): align with right edge of message bubble!
+        // Incoming message (white/gray bubble on left side): align with left edge of message bubble!
+        val isOutgoing = targetBounds.left > screenW * 0.35f
+        var posX = if (isOutgoing) {
+            targetBounds.right - overlayWidth
+        } else {
+            targetBounds.left
+        }
+
+        // Strictly guarantee card fits inside screen boundaries:
         if (posX + overlayWidth > screenW - marginPx) {
             posX = screenW - overlayWidth - marginPx
         }
@@ -386,8 +397,7 @@ class OverlayController(
             format = PixelFormat.TRANSLUCENT
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             gravity = Gravity.TOP or Gravity.END
             x = (12 * density).toInt()
             y = (statusBarInsetPx + (10 * density).toInt())

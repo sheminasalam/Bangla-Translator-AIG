@@ -68,13 +68,13 @@
     <!-- Translated English text -->
     <TextView
         android:id="@+id/tvTranslatedText"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="@color/overlay_text"
         android:textSize="12sp"
         android:textStyle="normal"
         android:lineSpacingExtra="2dp"
-        android:maxLines="6"
+        android:maxLines="8"
         android:ellipsize="end"
         android:textIsSelectable="false" />
 </LinearLayout>
